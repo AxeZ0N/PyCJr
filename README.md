@@ -3,17 +3,6 @@
 IBM PCjr (4860/4861) + Pi-driven IR keyboard link. Development toolkit,
 BDS import package, MCP server, and durable project record in one repo.
 
-## BDS import order
-
-Import into Better DeepSeek in this order:
-
-1. `bds/00_system_prompt.md` — assistant envelope.
-2. `bds/10_skills/pcjr_cartridge_basic_asm.md` — platform facts.
-3. `bds/10_skills/pcjr_test_workflow.md` — test/retrieval rules.
-4. `bds/20_persona/pcjr_hardware_engineer.md` — persona.
-5. `bds/30_project/pycjr_project.md` — project rules.
-6. MCP server `pcjr-tools` @ `http://localhost:8765/mcp`.
-
 ## Directory map
 
 | Path | Purpose |

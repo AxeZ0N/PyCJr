@@ -148,12 +148,12 @@ and `falling>0`, `status=0` or `64`.
 | −PORT_C | 62h | 8255 Port C input | Confirmed + hardware-verified |
 | −CMD_PORT | 63h | 8255 control | Confirmed |
 | −TIMER0 | 40h | 8253 counter 0 (CH0). Input clock 2.38636 MHz (14.31818/6 = CPU/2), empirical | Confirmed; clock empirical |
-| TIMER1 | 41h | 8253 counter 1 (keyboard de-serialize; 1.1925 MHz clk when A0h D5=0) | manual-verified (entries 31/34) |
-| TIMER2 | 42h | 8253 counter 2 (sound source; IR test 40 kHz when A0h D6=1) | manual-verified (entries 31/34) |
-| TIM_CTL | 43h | 8253 control | Confirmed |
-| NMI_PORT | A0h | NMI mask / control | Confirmed + manual-verified |
-| INTA00 | 20h | 8259 PIC | Confirmed |
-| INTA01 | 21h | 8259 PIC | Confirmed |
+| −TIMER1 | 41h | 8253 counter 1 (keyboard de-serialize; 1.1925 MHz clk when A0h D5=0) | manual-verified (entries 31/34) |
+| −TIMER2 | 42h | 8253 counter 2 (sound source; IR test 40 kHz when A0h D6=1) | manual-verified (entries 31/34) |
+| −TIM_CTL | 43h | 8253 control | Confirmed |
+| −NMI_PORT | A0h | NMI mask / control | Confirmed + manual-verified |
+| −INTA00 | 20h | 8259 PIC | Confirmed |
+| −INTA01 | 21h | 8259 PIC | Confirmed |
 ⚙
 
 8253-5 decode: A6=1, A1/A0 select 40h-43h. Manual `Hex Range` print
