@@ -29,3 +29,5 @@ STAGE5: st=1 edges=40 init=0 max_delta=3456 at_edge=20, kb intact. 38/40 varianc
 
 ## 2026-08-22 · ch0cal_anchor · empirical
 CH0CAL: st=1 ed=38 in0=0 it=61440, kb intact. gap1: 3428/23704/47636.
+## 2026-08-22 · ingest_payload · decision · tooling
+One-step append+commit via bin/jr-ingest.sh <payload.zip>. Payload = COMMIT.txt + facts.append.md + docs/*.append.md + sessions/*.md. Repo files never overwritten.

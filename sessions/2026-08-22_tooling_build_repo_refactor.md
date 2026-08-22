@@ -129,3 +129,9 @@ The two baseline commits were followed by a third wiring commit:
 The earlier loose-end note "grep_repo requires server registration in
 refs/pcjr_ref_mcp.py" is superseded: registration lives in
 `mcp/pcjr_tools_server.py` and is already done.
+
+## Ingest cycle test (2026-08-22)
+
+- jr-ingest.sh added; first payload applied end to end.
+- Write path verified: facts dedupe, docs append, session append, one commit.
+- Remaining manual: add MANIFEST.md row for bin/jr-ingest.sh (not append-friendly; use jr-commit --setup), and delete the pcjr_ch0_clock_status memory key.
