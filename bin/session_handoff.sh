@@ -24,14 +24,21 @@ for file in "$TARGET_DIR"/*; do
     [[ -z "$newest" || "$file" -nt "$newest" ]] && newest="$file"
 done
 
-# 5. Copy the file contents and print the confirmation
+# 5. Copy the git command + file contents and print confirmation
 if [[ -n "$newest" ]]; then
-    # Copy file contents to clipboard
-    xclip -selection clipboard < "$newest"
-    
-    # Extract just the filename from the full path for a cleaner print
     filename=$(basename "$newest")
-    echo "Success! Copied contents of file: $filename"
+    
+    # Define the git command string you want at the top
+    GIT_CMD="# git add $filename && git commit -m 'update' && git push"
+
+    # Group the git command and file contents into a single clipboard stream
+    { 
+        echo "$GIT_CMD"
+        echo "" # Adds a blank line for spacing
+        cat "$newest"
+    } | xclip -selection clipboard
+    
+    echo "Success! Copied git command and contents of file: $filename"
 else
     echo "No files found in '$TARGET_DIR'." >&2
 fi
