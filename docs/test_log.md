@@ -76,3 +76,16 @@ regression: not applicable
 
 ```
 
+### BUSY100CAL (aborted)
+
+- S0 pass: Out of DATA traps, ERR 4. 1/0 no trap.
+- S1 pass: CH0 lo=12 hi=205, INP/OUT confirmed.
+- S2 pass: A0 mask/unmask, keyboard intact.
+- S3/S4 data rejected: n=0 reps 50776/49808/53624; n=5 -> 64 (wrap
+  fold); n=10 -> 20256 (wrap fold); wrap-flag run still multi-wrap
+  ambiguous. Aborted, tool unfit. See facts.md busy100cal_aborted.
+
+### ENVSHAPE delay sweep
+
+- ed=38 flat 0.2..1.0s. >1s ed=18 (truncation). 40 retired.
+  open_3840 refuted; merge hypothesis open.

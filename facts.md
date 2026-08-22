@@ -47,3 +47,41 @@ contingencies. Procedure: copy newest handoff and rename (FAQ 19).
 Session files reference applicable anchor BASIC/ASM by name; full
 listing only for a new program. Known anchors: IRPING, SHAPE3 St3,
 STAGE5, CH0CAL, ENVSHAPE.
+## 2026-08-22 · envshape_sweep_38 · empirical
+Delay sweep (Enter->h, 0.2..1.0s in 0.1 steps): ed=38 flat across the
+band. >1s: ed=18 (truncation). The missing 2 edges are not a timing
+loss. 38 = true envelope shape of one h make+break. 40 target RETIRED.
+supersedes: open_3840
+
+## 2026-08-22 · open_3840_refuted · conflict
+open_3840 (arming window swallowed frame 1 start burst) refuted by the
+sweep: 38 holds at delays where nothing can be swallowed. New candidate
+for the missing 2 edges: demodulated-envelope burst-pair merge — 62us
+burst reads ~230us high at PC6, and zero-silence 220/157us lets a burst
+falling edge collide with the next rising edge. hypothesis, unverified.
+supersedes: open_3840
+
+## 2026-08-22 · on_error_linger · empirical
+Cartridge BASIC ON ERROR GOTO stays armed after END. Direct-mode error:
+ERL=65535, error code reported normally. Clear with ON ERROR GOTO 0
+before END. 1/0 does NOT trap (no BASIC-level error raised); Out of
+DATA (err 4) traps reliably. Use Out of DATA for handler tests.
+
+## 2026-08-22 · busy100cal_aborted · decision · tooling
+CH0 single-wrap timing (65536 ct = 27.47 ms @ empirical 2.38636 MHz)
+is unfit for measuring interpreted-BASIC delays. Jitter spans multiple
+wraps; a single wrap flag undercounts, and min-on-raw-dt is wrong under
+wrap. If the line-130 delay is ever needed, measure from ASM with a
+multi-wrap counter, never from BASIC. Stage gates passed S0 (trap via
+Out of DATA), S1 (INP/OUT + CH0 read), S2 (A0 mask/unmask, kb intact).
+
+## 2026-08-22 · width80_rejected · empirical
+WIDTH 80 works in Cartridge BASIC but is unreadable on this monitor.
+Stay at 40-col with paged, fixed-width output. `; VERIFY: WIDTH 80
+support against PCjr BASIC Reference`.
+
+## 2026-08-22 · anchors_archived · decision · tooling
+ENVSHAPE.BAS + CH0CAL.ASM archived as ground-truth anchors
+(skill_create: "ENVSHAPE Anchor", "CH0CAL Anchor"). Repo is source of
+truth: full listings now live at docs/anchors/ENVSHAPE.BAS and
+docs/anchors/CH0CAL.ASM.
