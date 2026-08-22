@@ -85,3 +85,42 @@ ENVSHAPE.BAS + CH0CAL.ASM archived as ground-truth anchors
 (skill_create: "ENVSHAPE Anchor", "CH0CAL Anchor"). Repo is source of
 truth: full listings now live at docs/anchors/ENVSHAPE.BAS and
 docs/anchors/CH0CAL.ASM.
+## 2026-08-22 · stock_throughput_retired · empirical + analysis
+86 ch/s retired as a link figure: INT 16h drain of a pre-filled
+buffer with KBDNMI masked; producer absent; unit ambiguous (system
+type-ahead vs keyboard MPU buffer).
+supersedes: Rule 8 "stock ceiling ~86 chars/sec".
+
+## 2026-08-22 · emitter_throttle_60 · policy
+60 ch/s = emitter throttle (sleep 1/max_cps) to bound NMI CPU tax.
+Not a ceiling; disappears with the CPU floor under a custom path.
+
+## 2026-08-22 · stock_two_floors · manual-verified + empirical
+Serial floor: 440us cell, 11-bit frame, 4840us IBG (entry 94).
+CPU floor: KBDNMI ~4.8ms/frame hostage (220us half-cell, 5x
+majority, entry 93) + KBINT consumer cost.
+
+## 2026-08-22 · nmi_one_per_frame · manual-verified
+NMI fires once per frame on start-bit leading edge (entry 93).
+Keypress = make + break = 2 NMIs. Typematic rate unverified
+(; VERIFY: against PCjr keyboard docs).
+
+## 2026-08-22 · wired_port_not_faster · manual-verified
+Cable shares biphase serial + 11 stop bits (entry 94) and the same
+flip-flop -> PC0 latch -> NMI path (entry 95). Bypasses only the
+photodiode/amp/demod front-end.
+
+## 2026-08-22 · pc6_demod_envelope · manual-verified
+PC6 = demodulated envelope: photodiode -> amp -> amp w/AGC ->
+demodulator -> BO3 I.R. KBD DATA (entry 92). 40 kHz carrier
+mandatory (entry 92). 62us burst -> H ~230us typ / ~471us max.
+Upgrades the earlier empirical label; PC6 is not the raw carrier.
+
+## 2026-08-22 · memory_matcher_semantics · analysis
+BDS 'called' memory keys split on underscores and fire per token
+(FAQ §20). Explains pcjr_* acting like always.
+
+## 2026-08-22 · envelope_floor_open · open item
+Full H/L delta dump never transcribed (only summary stats +
+gap2_1126). Open: stretch distribution, merge distance, min assert
+width. Custom PC6 decode floor = stretch + merge, unmeasured.
