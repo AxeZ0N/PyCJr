@@ -135,3 +135,18 @@ refs/pcjr_ref_mcp.py" is superseded: registration lives in
 - jr-ingest.sh added; first payload applied end to end.
 - Write path verified: facts dedupe, docs append, session append, one commit.
 - Remaining manual: add MANIFEST.md row for bin/jr-ingest.sh (not append-friendly; use jr-commit --setup), and delete the pcjr_ch0_clock_status memory key.
+## Close (2026-08-22)
+
+All loose ends from the build session resolved:
+
+- migrate_repo.py reconciliation clean; max_delta=3528 stragglers
+  and stale v4 version strings fixed before commit.
+- BDS memory culled to the no-prefix set; extra ch0 key deleted.
+  Memory treated as fluid; facts.md + docs remain the ledger.
+- skill_create overwrite test: duplicate on usage mismatch; table
+  glyphs mangled. Re-import repo files going forward.
+- MANIFEST.md row added for bin/jr-ingest.sh.
+- Ingest cycle test passed end to end.
+- called-keyword trigger experiment: done, functional.
+
+Scope closed. Next scope: 2026-08-22_session_conventions_readpath.md.
