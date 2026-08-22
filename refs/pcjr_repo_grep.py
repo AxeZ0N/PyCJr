@@ -96,11 +96,14 @@ def format_records(records) -> str:
         if "error" in r:
             out.append(f"{r['file']}: ERROR {r['error']}")
             continue
-        for ln in r["before"]:
-            out.append(f"{r['file']}:{r['line_no']}:  {ln}")
+        # before lines are the (context) lines immediately preceding the
+        # match; their 1-based numbers start at match_line - len(before).
+        for k, ln in enumerate(r["before"], start=r["line_no"] - len(r["before"])):
+            out.append(f"{r['file']}:{k}:  {ln}")
         out.append(f"{r['file']}:{r['line_no']}:> {r['line']}")
-        for ln in r["after"]:
-            out.append(f"{r['file']}:{r['line_no']}:  {ln}")
+        # after lines start at match_line + 1.
+        for k, ln in enumerate(r["after"], start=r["line_no"] + 1):
+            out.append(f"{r['file']}:{k}:  {ln}")
         out.append("---")
     return "\n".join(out)
 
