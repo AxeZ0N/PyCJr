@@ -1,5 +1,20 @@
 # PyCJr — Changelog
 
+## v5.1 — 2026-08-22 — Wiring cleanup
+
+- Registered `grep_repo` in `mcp/pcjr_tools_server.py` (three tools now).
+- Fixed `bin/start_pcjr_mcp.sh` and `bin/byte_selftest.sh` to point at
+  the real driver filenames (`mcp/pcjr_tools_server.py`,
+  `refs/pcjr_asm_debug.py`).
+- Normalized `bin/grep_selftest.sh` to resolve repo root via SCRIPT_DIR.
+- Corrected all manual fallback commands from the removed
+  `pcjr_ref_util.py` to `refs/pcjr_ref_tool.py REF ...`.
+- Server `PCJR_REF_DIR` default now derives from the server file's
+  location instead of a stale absolute path.
+- MANIFEST rewritten to v5; README completed.
+- `bin/pycjr.py`: fixed `--cc` help text (Fn+B, not Ctrl+C) and the
+  chars/sec docstring/actual mismatch.
+
 ## v5 — 2026-08-22 — Living-repo refactor + tooling
 
 Two commits:

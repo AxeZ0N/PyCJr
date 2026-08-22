@@ -80,16 +80,16 @@ When MCP is unavailable for the manual, ask the user to run and paste:
 ```
 REF LOOKUP NEEDED
 Run:
-python3 refs/pcjr_ref_util.py refs/deepseek_reference.txt query "<term>" --context 3 --max-pages 1
+python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt query "<term>" --context 3 --max-pages 1
 Paste output.
 ```
 
 Command reference:
 
 ```
-python3 refs/pcjr_ref_util.py refs/deepseek_reference.txt query "<term>" --context 3 --max-pages 1
-python3 refs/pcjr_ref_util.py refs/deepseek_reference.txt peek 30 35
-python3 refs/pcjr_ref_util.py refs/deepseek_reference.txt stats --verbose
+python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt query "<term>" --context 3 --max-pages 1
+python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt peek 30 35
+python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt stats --verbose
 ```
 
 ### Reading search results
@@ -195,7 +195,7 @@ Fix only that stage, then re-run.
 - Burying an unverified port/segment value without the `; VERIFY:` tag.
 - Skipping IRPING when transport behavior looks wrong.
 - Assuming any recovery other than cold power-cycle.
-- Telling the assistant to run local `pcjr_ref_util.py` commands — the
+- Telling the assistant to run local `pcjr_ref_tool.py` commands — the
 assistant cannot.
 - Trusting a manual value without search_ref output or pasted output.
 - Treating a noisy OCR match as a clean manual fact.

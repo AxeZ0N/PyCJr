@@ -3,12 +3,10 @@
 PCjr stock IR keyboard emulator — integrated prototype.
 
 Backend: reduced PCjrIRSender (frame/press/wave only, verified).
-Outer layer: text input, atomic Shift handling, 50 chars/sec throttle.
+Outer layer: text input, atomic Shift handling, 60 chars/sec CLI throttle.
 
-Still stubs / intentionally omitted:
-  - ANSI escape -> F-keys/arrows (ESC_MAP) : native PCjr codes unverified
-  - Ctrl+Break                             : native sequence unverified
-  - stateful make/break                    : out of scope by design
+Intentionally omitted:
+  - stateful make/break (held-key typematic): out of scope by design.
 """
 
 import argparse
@@ -171,7 +169,6 @@ ESC_MAP = {
 SHIFT_SCAN = 0x2A
 FN_SCAN = 0x54
 
-
 # ----------------------------------------------------------------------
 # Reduced sender — frame/press/wave only. Do not extend beyond this.
 # ----------------------------------------------------------------------
@@ -294,7 +291,6 @@ class PCjrIRSender:
     def send_key_press(self, scan):
         self.send_wave(self.key_press_pulses(scan))
 
-
 # ----------------------------------------------------------------------
 # Emulator outer layer
 # ----------------------------------------------------------------------
@@ -404,8 +400,7 @@ class PCjrEmulator(PCjrIRSender):
         """
         # The wave builder will append delay_between_codes at the end of the sequence
         original_frame_gap_us = self.frame_gap_us
-        self.frame_gap_us = delay_between_codes 
-
+        self.frame_gap_us = delay_between_codes
 
         # Reset delay
         test_frames = self.build_frame(code) + self.build_frame(code)
@@ -415,14 +410,10 @@ class PCjrEmulator(PCjrIRSender):
         time.sleep(delay_after_enter)
         self.send_wave(test_frames)
 
-
-
-
 import select
 import sys
 import termios
 import tty
-
 
 def _read_escape_sequence(fd):
     """Read an ANSI escape sequence starting with ESC (already consumed)."""
@@ -444,7 +435,6 @@ def _read_escape_sequence(fd):
             break
 
     return seq
-
 
 def stdin_passthrough(emu):
     """Stream stdin to the PCjr.
@@ -502,7 +492,6 @@ def stdin_passthrough(emu):
         termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
         emu.close()
 
-
 # ----------------------------------------------------------------------
 # CLI
 # ----------------------------------------------------------------------
@@ -515,7 +504,7 @@ def main():
     group.add_argument(
         "--escape", help="send one ANSI escape sequence as hex, e.g. 1b5b41"
     )
-    group.add_argument("--cc", action="store_true", help="Send Ctrl+C to PCJr")
+    group.add_argument("--cc", action="store_true", help="Send PCjr Ctrl+Break (Fn+B)")
     group.add_argument(
         "--stdin", action="store_true", help="stream stdin to the PCjr interactively"
     )
@@ -548,7 +537,6 @@ def main():
             emu.send_text(args.text)
     finally:
         emu.close()
-
 
 if __name__ == "__main__":
     main()

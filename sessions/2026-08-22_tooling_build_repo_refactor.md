@@ -110,7 +110,22 @@ stdlib only, no git binary, no subprocess, fixed roots, loopback bind.
   still needs explicit approval; old `pcjr_*` keys must be removed by
   the user in the BDS memory UI. The assistant does not write memory
   silently.
-- grep_repo requires server registration in refs/pcjr_ref_mcp.py
-  (import pcjr_repo_grep, register tool name `grep_repo`).
 - skill_create overwrite semantics test remains open; do it on the
   smallest edit before the big platform skill rewrite.
+
+## Post-baseline wiring (2026-08-22, same session)
+
+The two baseline commits were followed by a third wiring commit:
+
+- `grep_repo` registered in `mcp/pcjr_tools_server.py` (v5; three tools).
+- `bin/start_pcjr_mcp.sh` -> `mcp/pcjr_tools_server.py`.
+- `bin/byte_selftest.sh` -> `refs/pcjr_asm_debug.py`.
+- `bin/grep_selftest.sh` normalized to SCRIPT_DIR.
+- All manual fallback commands corrected to `refs/pcjr_ref_tool.py`.
+- Server `PCJR_REF_DIR` default derives from the server file location.
+- MANIFEST v5 rewrite; README completed.
+- `bin/pycjr.py`: `--cc` help = Fn+B; docstring/actual throttle aligned.
+
+The earlier loose-end note "grep_repo requires server registration in
+refs/pcjr_ref_mcp.py" is superseded: registration lives in
+`mcp/pcjr_tools_server.py` and is already done.

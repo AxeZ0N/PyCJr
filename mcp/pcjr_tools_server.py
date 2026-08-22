@@ -20,7 +20,8 @@ Environment variables:
     PCJR_REF_DIR   Directory containing deepseek_reference.txt,
                    pcjr_ref_tool.py, pcjr_asm_debug.py, and
                    pcjr_repo_grep.py.
-                   Defaults to ~/Code/Helpful/PCJR/refs.
+                   Defaults to <repo root>/refs (derived from this
+                   file's location).
     PCJR_HOST      Bind host. Defaults to 127.0.0.1.
     PCJR_PORT_REF  Bind port. Defaults to 8765.
 
@@ -30,14 +31,18 @@ http://localhost:8765/mcp in Better DeepSeek.
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
 
+_SERVER_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SERVER_DIR.parent
+
 HOST = os.environ.get("PCJR_HOST", "127.0.0.1")
 PORT_REF = int(os.environ.get("PCJR_PORT_REF", "8765"))
 
-REF_DIR = os.environ.get("PCJR_REF_DIR", os.path.expanduser("~/Code/Helpful/PCJR/refs"))
+REF_DIR = os.environ.get("PCJR_REF_DIR", str(_REPO_ROOT / "refs"))
 REF_FILE = os.path.join(REF_DIR, "deepseek_reference.txt")
 REFTOOL_FILE = os.path.join(REF_DIR, "pcjr_ref_tool.py")
 ASM_FILE = os.path.join(REF_DIR, "pcjr_asm_debug.py")

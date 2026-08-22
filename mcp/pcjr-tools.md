@@ -89,7 +89,12 @@ When the server is down, the assistant asks you to run and paste:
 git grep -n -i -E -C2 "carrier_high_us|burst_us|gap2" -- facts.md sessions docs
 ```
 
-For the manual strip, the fallback is the `search_ref` dispatch; when the
-server is down, paste the output of the ref tool (or ask the assistant
-for the exact command for your checkout).
+For the manual strip, when the server is down, run the ref tool and paste
+the output:
+
+```
+python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt query "<term>" --context 3 --max-pages 1
+python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt peek 30 35
+python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt stats --verbose
+```
 

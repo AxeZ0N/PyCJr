@@ -133,8 +133,9 @@ Anchor first, then change one variable per iteration.
 ## 18. The server isn't running. What breaks?
 
 `search_ref`, `debug_asm`, and `grep_repo` all go dark. Fallback:
-paste-first `git grep` for the repo; paste
-`python3 refs/pcjr_ref_util.py ... query ...` for the manual.
+paste-first `git grep` for the repo; for the manual, run
+`python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt query "<term>" --context 3 --max-pages 1`
+and paste the output.
 
 ## 19. How do I start a new scope?
 
