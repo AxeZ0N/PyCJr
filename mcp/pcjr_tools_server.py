@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""pcjr-tools MCP server (v4 refactor).
+"""pcjr-tools MCP server (v5).
 
-Exposes exactly two dispatch tools over the local PCjr reference strip
-and the verified pcjr_asm_debug workbench:
+Exposes three dispatch tools over the local PCjr reference strip, the
+verified pcjr_asm_debug workbench, and the read-only repo grep engine:
 
     search_ref  mode=query|peek|stats
     debug_asm   command=selftest|parse|emit|decode|patch|check|branch|
                 rel8|rel16|selfloc
+    grep_repo   mode=query|stats|roots
 
-Both tools declare a required discriminator ("mode" / "command") so the
-BDS MCP client never drops them. The reference strip is loaded once at
-startup and served read-only; nothing leaves this machine.
+Each tool declares a required discriminator ("mode" / "command") so the
+BDS MCP client never drops them. The reference strip and repo are loaded
+read-only; nothing leaves this machine.
 
 Endpoint:
     /mcp   streamable HTTP (FastMCP streamable_http_app)
 
 Environment variables:
     PCJR_REF_DIR   Directory containing deepseek_reference.txt,
-                   pcjr_ref_tool.py, and pcjr_asm_debug.py.
+                   pcjr_ref_tool.py, pcjr_asm_debug.py, and
+                   pcjr_repo_grep.py.
                    Defaults to ~/Code/Helpful/PCJR/refs.
     PCJR_HOST      Bind host. Defaults to 127.0.0.1.
     PCJR_PORT_REF  Bind port. Defaults to 8765.
@@ -39,6 +41,7 @@ REF_DIR = os.environ.get("PCJR_REF_DIR", os.path.expanduser("~/Code/Helpful/PCJR
 REF_FILE = os.path.join(REF_DIR, "deepseek_reference.txt")
 REFTOOL_FILE = os.path.join(REF_DIR, "pcjr_ref_tool.py")
 ASM_FILE = os.path.join(REF_DIR, "pcjr_asm_debug.py")
+GREP_FILE = os.path.join(REF_DIR, "pcjr_repo_grep.py")
 
 sys.path.insert(0, REF_DIR)
 
@@ -52,8 +55,9 @@ except ImportError:
 try:
     import pcjr_ref_tool as REFTOOL
     import pcjr_asm_debug as ASM
+    import pcjr_repo_grep as GREP
 except ImportError as exc:
-    print("Missing pcjr_ref_tool.py or pcjr_asm_debug.py in PCJR_REF_DIR:", file=sys.stderr)
+    print("Missing pcjr_ref_tool.py, pcjr_asm_debug.py, or pcjr_repo_grep.py in PCJR_REF_DIR:", file=sys.stderr)
     print(f"  expected dir: {REF_DIR}", file=sys.stderr)
     print(f"  error: {exc}", file=sys.stderr)
     raise
@@ -232,11 +236,36 @@ def debug_asm(
     except ValueError as exc:
         return f"ERROR: {exc}"
 
+# --- grep_repo ----------------------------------------------------------
+
+@mcp.tool()
+def grep_repo(
+    mode: str,
+    query: Optional[str] = None,
+    context: int = 2,
+    literal: bool = False,
+) -> str:
+    """Read-only repo fact search over facts.md, sessions/, docs/.
+
+    mode:
+        query  Case-insensitive regex search. Needs 'query'.
+        stats  File/line counts per root.
+        roots  Which roots exist.
+    """
+    try:
+        result = GREP.dispatch(mode, query, context, literal)
+        if isinstance(result, dict) and "text" in result:
+            return result["text"]
+        return json.dumps(result, indent=2)
+    except Exception as exc:
+        return f"ERROR: {exc}"
+
 def main() -> None:
     print("pcjr-tools MCP server")
     print(f"  reference strip: {REF_FILE}")
     print(f"  ref tool:        {REFTOOL_FILE}")
     print(f"  asm debugger:    {ASM_FILE}")
+    print(f"  repo grep:       {GREP_FILE}")
     print(f"  entries loaded:  {len(REFSTORE.pages)}")
     print(f"  endpoint:        http://{HOST}:{PORT_REF}/mcp")
     print("Press Ctrl+C to stop.")

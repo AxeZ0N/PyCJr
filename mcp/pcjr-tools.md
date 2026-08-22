@@ -8,7 +8,7 @@ Server: `pcjr-tools` at `http://localhost:8765/mcp` (loopback bind).
 |---|---|---|
 | `search_ref` | `query` \| `peek` \| `stats` | Manual strip search |
 | `debug_asm` | command dispatch | 8088 byte workbench |
-| `grep_repo` | `query` \| `stats` \| `roots` | Read-only repo fact search (Option A: stdlib, no git) |
+| `grep_repo` | `query` \| `stats` \| `roots` | Read-only repo fact search (stdlib, no git) |
 
 ### search_ref
 
@@ -28,7 +28,7 @@ command: selftest|parse|emit|decode|patch|check|branch|rel8|rel16|selfloc
 
 ```
 
-### grep_repo (new)
+### grep_repo
 
 Schema:
 
@@ -46,18 +46,29 @@ Schema:
 - `roots` — which roots exist.
 - Zero-arg hazard: every `grep_repo` call MUST include `mode`.
 
-## Registration (write once)
+## Registration (already wired)
 
-In `refs/pcjr_ref_mcp.py`, import the engine and register a third tool:
+`grep_repo` is registered in `mcp/pcjr_tools_server.py` (v5). It imports
+the engine from `refs/pcjr_repo_grep.py`. No manual edit needed.
+
+If you rebuild the server from scratch:
 
 ```
-from pcjr_repo_grep import TOOL_SCHEMA, dispatch
+import pcjr_repo_grep as GREP
 
-# under your existing tool registration loop, add:
-#   name="grep_repo", schema=TOOL_SCHEMA, handler=dispatch
+@mcp.tool()
+def grep_repo(mode: str, query: Optional[str] = None,
+              context: int = 2, literal: bool = False) -> str:
+    ...
 ```
 
-Then restart the server. Self-test:
+Then restart:
+
+```
+bin/start_pcjr_mcp.sh
+```
+
+Self-test:
 
 ```
 bin/grep_selftest.sh
@@ -77,4 +88,8 @@ When the server is down, the assistant asks you to run and paste:
 ```
 git grep -n -i -E -C2 "carrier_high_us|burst_us|gap2" -- facts.md sessions docs
 ```
+
+For the manual strip, the fallback is the `search_ref` dispatch; when the
+server is down, paste the output of the ref tool (or ask the assistant
+for the exact command for your checkout).
 
