@@ -55,10 +55,16 @@ No. Append a new line with `supersedes:`. Old lines are history.
 - whatever you paste. It does NOT see `facts.md`, `sessions/`, `docs/`,
 `refs/`, `mcp/`, `bin/` unless you paste them.
 
-## 7. End of session: what exactly do I commit?
+## 7. End of session: what exactly do I do?
 
-Assistant proposes: facts.md appends + session file + optional
-`docs/test_log.md` append. You save them, then:
+The assistant emits a payload zip. Download it and run:
+
+```
+bin/jr-ingest.sh payload.zip
+```
+
+That appends the facts headings, session notes, and test-log entries,
+then commits in one step. Manual alternative:
 
 ```
 bin/jr-commit.sh "scope: <summary>" facts.md sessions/... docs/...
@@ -148,3 +154,6 @@ The keyword matcher splits on underscores and every message says "PCjr",
 so `pcjr_*` keys fire like `always` and bloat context. Use `carrier_timing`,
 `ch0_clock`, etc., and keep `always` keys near-empty.
 
+## 21. What's inside an ingest payload?
+
+`COMMIT.txt` (one-line commit message), `facts
