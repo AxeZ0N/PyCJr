@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""PCjr byte workbench. Pure stdlib. Prove all gates: python3 pcjr_byte.py selftest"""
+"""PCjr 8088 byte workbench (v4 refactor).
+
+Pure stdlib. Holds the verified pure functions used to construct and
+check Cartridge BASIC machine-code images for the IBM PCjr. The MCP
+server imports this module; the CLI remains for local verification.
+
+Run the stage gates after a server restart:
+    python3 pcjr_asm_debug.py selftest
+"""
+import json
 import re
 import sys
 
@@ -15,7 +24,6 @@ GOLDEN_DATA = """1000 DATA &H0E,&H1F,&H55,&HE8,&H00,&H00,&H5D,&H8D,&HAE,&H7A,&H0
 1050 DATA &H02,&H89,&H7E,&H04,&H5D,&HCB
 1060 DATA -1
 """
-
 
 def parse(text):
     """BASIC DATA block -> byte list (stops at -1 sentinel)."""
@@ -41,17 +49,15 @@ def parse(text):
             out.append(v)
     return out
 
-
-def emit(data, start=1000, step=10, per=11):
+def emit(data, start=1000, step=10, wrap=11):
     """byte list -> BASIC DATA block with sentinel."""
-    lines, n = [], (len(data) + per - 1) // per
+    lines, n = [], (len(data) + wrap - 1) // wrap
     for i in range(n):
-        chunk = data[i * per:(i + 1) * per]
+        chunk = data[i * wrap:(i + 1) * wrap]
         lines.append(f"{start + i * step} DATA "
                      + ",".join(f"&H{b:02X}" for b in chunk))
     lines.append(f"{start + n * step} DATA -1")
     return "\n".join(lines)
-
 
 def patch(data, patches):
     """Non-mutating (offset,value) edits; ValueError on bad input."""
@@ -64,9 +70,8 @@ def patch(data, patches):
         out[off] = val
     return out
 
-
 def check(actual, expected):
-    """Compare byte lists -> report dict."""
+    """Compare byte lists -> report dict (simple form)."""
     a, e = list(actual), list(expected)
     first = next((i for i in range(min(len(a), len(e))) if a[i] != e[i]), None)
     if first is None and len(a) != len(e):
@@ -74,6 +79,28 @@ def check(actual, expected):
     return {"ok": len(a) == len(e) and first is None,
             "delta": len(a) - len(e), "first_diff": first}
 
+def check_detail(actual, expected, context=8):
+    """Compare byte lists -> report with hex context around first divergence."""
+    a, e = list(actual), list(expected)
+    first = next((i for i in range(min(len(a), len(e))) if a[i] != e[i]), None)
+    if first is None and len(a) != len(e):
+        first = min(len(a), len(e))
+
+    lo = max(0, (first if first is not None else 0) - context)
+    hi = min(max(len(a), len(e)),
+             (first if first is not None else 0) + context)
+
+    return {
+        "ok": len(a) == len(e) and first is None,
+        "len_actual": len(a),
+        "len_expected": len(e),
+        "delta": len(a) - len(e),
+        "first_diff": first,
+        "context_start": lo,
+        "context_end": hi,
+        "expected_context_hex": "".join(f"{b:02X}" for b in e[lo:hi]),
+        "actual_context_hex": "".join(f"{b:02X}" for b in a[lo:hi]),
+    }
 
 def rel8(insn, target):
     """Short branch displacement bytes (next-ip = insn+2)."""
@@ -82,7 +109,6 @@ def rel8(insn, target):
         raise ValueError(f"rel8 out of range: {disp}")
     return [disp & 0xFF]
 
-
 def rel16(insn, target):
     """Near call/jmp displacement bytes (next-ip = insn+3)."""
     if not (-32768 <= target - (insn + 3) <= 32767):
@@ -90,14 +116,33 @@ def rel16(insn, target):
     disp = (target - (insn + 3)) & 0xFFFF
     return [disp & 0xFF, (disp >> 8) & 0xFF]
 
-
 def selfloc_disp(pop_off, base=128):
-    """lea bp,[bp+disp16] after call get_ip / pop bp."""
+    """lea bp,[bp+disp16] displacement bytes after call get_ip / pop bp."""
     disp = base - pop_off
     if not (0 <= disp <= 0xFFFF):
         raise ValueError(f"selfloc out of range: {disp}")
     return [disp & 0xFF, (disp >> 8) & 0xFF]
 
+def selfloc_full(pop_offset, base=128):
+    """Full self-location instruction bytes plus the resolved BP target.
+
+    Contract: after `call get_ip` / `pop bp`, BP = pop_offset. We emit
+    `lea bp,[bp+disp16]` so BP becomes `base`. The complete instruction
+    is `8D AE <disp16-lo> <disp16-hi>`.
+    """
+    disp = base - pop_offset
+    if not (0 <= disp <= 0xFFFF):
+        raise ValueError(f"selfloc out of range: {disp}")
+    lo, hi = disp & 0xFF, (disp >> 8) & 0xFF
+    return {
+        "pop_offset": pop_offset,
+        "base": base,
+        "disp": disp,
+        "disp16_hex": f"{hi:02X}{lo:02X}",
+        "lea_hex": f"8DAE{lo:02X}{hi:02X}",
+        "result_bp": base,
+        "asm": f"lea bp,[bp+0x{disp:04X}]",
+    }
 
 REGS16 = ["ax", "cx", "dx", "bx", "sp", "bp", "si", "di"]
 REG8 = ["al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"]
@@ -119,18 +164,14 @@ MNEMO = {0x89: "mov", 0x31: "xor", 0x39: "cmp", 0x85: "test"}
 MNEMO8_RM_REG = {0x88: "mov"}   # MOV r/m8, r8
 MNEMO8_REG_RM = {0x3A: "cmp"}   # CMP r8, r/m8
 
-
 def _s8(v):
     return v - 256 if v >= 128 else v
-
 
 def _s16(v):
     return v - 65536 if v >= 32768 else v
 
-
 def _u16(lo, hi):
     return lo | (hi << 8)
-
 
 def decode(data):
     """byte list -> [(offset, length, text)] for the verified subset."""
@@ -149,7 +190,8 @@ def decode(data):
             off += 2
         elif b == 0xE8:
             next_ip = off + 3
-            text = f"call 0x{(next_ip + _s16(_u16(data[off + 1], data[off + 2]))) & 0xFFFF:04X}"
+            target = (next_ip + _s16(_u16(data[off + 1], data[off + 2]))) & 0xFFFF
+            text = f"call 0x{target:04X}"
             off += 3
         elif b in IMM8:
             text = IMM8[b] % data[off + 1]
@@ -168,7 +210,6 @@ def decode(data):
             off += 1
         out.append((start, off - start, text))
     return out
-
 
 def _modrm(data, off):
     opcode = data[off]
@@ -221,7 +262,6 @@ def _modrm(data, off):
         return p, f"db 0x80 ; group /{reg} unsupported"
     return p, f"db 0x{opcode:02X} ; outside verified subset"
 
-
 def branch_checks(data, checks):
     """Verify (insn_addr, target) pairs against decoded displacements."""
     reports = []
@@ -243,6 +283,12 @@ def branch_checks(data, checks):
                         "ok": actual == target})
     return {"ok": all(r["ok"] for r in reports), "checks": reports}
 
+def _raises(fn, args):
+    try:
+        fn(*args)
+        return False
+    except ValueError:
+        return True
 
 def selftest():
     """All stage gates against the frozen IRPING image."""
@@ -285,8 +331,20 @@ def selftest():
         "rel_je": rel8(0x27, 0x0033) == [0x0A],
         "rel_loop": rel8(0x33, 0x001F) == [0xEA],
         "selfloc": selfloc_disp(6, 128) == [0x7A, 0x00],
+        # v4 additions
+        "selfloc_full_6": selfloc_full(6, 128)["lea_hex"] == "8DAE7A00",
+        "selfloc_full_result": selfloc_full(6, 128)["result_bp"] == 128,
+        "check_detail_ok": check_detail(g, g)["ok"],
+        "check_detail_drop": check_detail(g[:0x23] + g[0x24:], g)["first_diff"] == 0x23,
+        "emit_wrap5_roundtrip": parse(emit(g, wrap=5)) == g,
+        "rel8_range_err": _raises(rel8, (0, 200)),
     }
 
+def _hex_or_error(txt):
+    try:
+        return list(bytes.fromhex(txt))
+    except ValueError as exc:
+        raise ValueError(f"invalid hex bytes: {exc}")
 
 def main(argv):
     if not argv or argv[0] == "selftest":
@@ -297,24 +355,46 @@ def main(argv):
             print(("PASS" if ok else "FAIL"), name)
         print("ALL_PASS", all_pass)
         return
-    cmd, data = argv[0], None
-    if cmd in ("parse", "dis", "patch", "check"):
-        data = parse(sys.stdin.read())
+
+    cmd = argv[0]
     if cmd == "parse":
-        print(f"bytes={len(data)}")
+        data = parse(sys.stdin.read())
         print("".join(f"{b:02X}" for b in data))
-        print(emit(data))
-    elif cmd == "dis":
+    elif cmd in ("decode", "dis"):
+        data = parse(sys.stdin.read())
         for off, ln, text in decode(data):
-            print(f"{off:04X}  {text}")
+            hx = "".join(f"{b:02X}" for b in data[off:off + ln])
+            print(f"{off:04X}: {hx:<9} {text}")
+    elif cmd == "emit":
+        data = _hex_or_error(argv[1])
+        print(emit(data))
     elif cmd == "patch":
+        data = parse(sys.stdin.read())
         p = [(int(s.split('=')[0], 0), int(s.split('=')[1], 0)) for s in argv[1:]]
         print(emit(patch(data, p)))
     elif cmd == "check":
-        print(check(data, list(bytes.fromhex(GOLDEN_HEX))))
+        actual = _hex_or_error(argv[1])
+        expected = _hex_or_error(argv[2]) if len(argv) > 2 else list(bytes.fromhex(GOLDEN_HEX))
+        print(json.dumps(check_detail(actual, expected), indent=2))
+    elif cmd == "rel8":
+        print(json.dumps(rel8(int(argv[1]), int(argv[2]))))
+    elif cmd == "rel16":
+        print(json.dumps(rel16(int(argv[1]), int(argv[2]))))
+    elif cmd == "selfloc":
+        pop = int(argv[1])
+        base = int(argv[2]) if len(argv) > 2 else 128
+        print(json.dumps(selfloc_full(pop, base), indent=2))
+    elif cmd == "branch":
+        data = _hex_or_error(argv[1])
+        checks = []
+        for s in argv[2:]:
+            a, t = s.split("=")
+            checks.append((int(a, 0), int(t, 0)))
+        print(json.dumps(branch_checks(data, checks), indent=2))
     else:
-        print("usage: pcjr_byte.py selftest|parse|dis|patch off=val ...|check")
-
+        print("usage: pcjr_asm_debug.py selftest|parse|decode|emit HEX|"
+              "patch off=val...|check HEX [REF_HEX]|rel8 I T|rel16 I T|"
+              "selfloc POP [BASE]|branch HEX at=target ...")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

@@ -1,8 +1,9 @@
-# PyCJr — Test Log (regression/probe run history)
+# PyCJr — Test Log (regression/probe run history) (v5)
 
 Repo-resident run history. Not BDS-imported. Rules (stage gates,
 emission gate, debug anchor rule) live in
-`bds/10_skills/pcjr_test_workflow.md`; this file records only results.
+`bds/10_skills/pcjr_test_workflow.md`; values and single-fact anchors
+live in `facts.md`; this file records run entries and baselines.
 
 ## Run entry template
 
@@ -36,19 +37,42 @@ regression: <IRPING | last known-good>
 
 - Recorded: `status=1`, `edges=40`, `init=0`, keyboard intact.
 - Recorded `max_delta=3456` at edge 20 (session reading; see note).
-- Note: edge count varies 38-40 across clean runs. Open item:
-  38-vs-40 edge variance root cause (owned by the project doc).
+- Note: edge count varies 38-40 across clean runs. Root cause resolved:
+  arming window swallowed frame 1's leading start burst
+  (`facts.md` `open_3840`).
 
 ### CH0CAL
 
 - Recorded pass: `st=1`, `ed=38`, `in=0`, `it=61440`, keyboard intact.
 - gap1: `3428` @ 1500us, `23704` @ 10000us, `47636` @ 20000us.
-- gap2: `1126` counts (~472 us).
+- gap2: `1126` counts (~472 us) = stretched envelope H, not silence, not
+  a bit cell. See `facts.md` `gap2_1126`.
 - Derivation and defects: `docs/ch0_calibration.md`.
+
+### ENVSHAPE
+
+- Recorded clean: `st=1`, `ed=38`, `in=0`, `it=61440`, `nh19 nl18`,
+  keyboard intact. Added to workflow anchor list.
 
 ## Superseded readings (do not reuse)
 
 - STAGE5 earlier readings `edges=38` / `max_delta=2592` are superseded by
   the STAGE5 clean baseline above.
 - `max_delta=3528` appears in some notes; the recorded anchor value is
-  `3456`. Flag any file still carrying 3528 for reconciliation.
+  `3456`. Flag any file still carrying 3528 for reconciliation
+  (`bin/migrate_repo.py` scans for this).
+
+## 2026-08-22 baseline
+
+```
+
+date: 2026-08-22
+id: repo_baseline
+source: tooling_build_repo_refactor
+contract: living-repo layout + grep_repo + jr-commit.sh
+observed: facts.md seeded; anchors migrated; docs slimmed
+keyboard_after: not applicable
+regression: not applicable
+
+```
+

@@ -1,75 +1,80 @@
-# PyCJr — pcjr-tools MCP Server (operational)
+# pcjr-tools — Server Ops + Tool Surface (v5)
 
-Repo-resident operational doc for the human. Not BDS-imported.
+Server: `pcjr-tools` at `http://localhost:8765/mcp` (loopback bind).
 
-The assistant sees the live MCP tool surface directly via the BDS MCP
-import, and reads the canonical dispatch tables in
-`bds/10_skills/pcjr_test_workflow.md`. This file covers server
-operations only — start, env, registration — and does not duplicate
-those tables.
+## Tools
 
-## Identity
-
-- Server name: `pcjr-tools`
-- URL: `http://localhost:8765/mcp`
-- Entry point: `refs/pcjr_ref_mcp.py`
-- Legacy alias: `pcjr-ref` (superseded; no longer used in docs/skills)
-
-## Canonical dispatch (target of the rewrite)
-
-- `search_ref` — searching tool; modes `query` | `peek` | `stats`.
-- `debug_asm` — assembly workbench; command dispatch over the former
-  `byte_*` family.
-
-Full arg/command tables: see `bds/10_skills/pcjr_test_workflow.md`.
-Do not maintain a second copy here.
-
-## Environment
-
-| Var | Default | Purpose |
+| Tool | Mode / command | Purpose |
 |---|---|---|
-| `PCJR_REF_DIR` | `$HOME/Code/Helpful/PCJR/refs` | Directory containing `deepseek_reference.txt`, `pcjr_ref_util.py`, `pcjr_byte.py` |
-| `PCJR_HOST` | `127.0.0.1` | Bind host |
-| `PCJR_PORT_REF` | `8765` | Bind port |
+| `search_ref` | `query` \| `peek` \| `stats` | Manual strip search |
+| `debug_asm` | command dispatch | 8088 byte workbench |
+| `grep_repo` | `query` \| `stats` \| `roots` | Read-only repo fact search (Option A: stdlib, no git) |
 
-## Start
-
-From the repo root:
-
-```bash
-PCJR_REF_DIR="$PWD/refs" python3 refs/pcjr_ref_mcp.py
-```
-
-Or use the provided launcher:
+### search_ref
 
 ```
-bin/start_pcjr_mcp.sh
+
+mode: query   query, context(3), max_pages(1)
+mode: peek    start, end (1-based; start>=1)
+mode: stats   verbose (omit or true; never false)
+
 ```
 
-## Byte self-check
+### debug_asm
 
 ```
-bin/byte_selftest.sh
-# equivalent:
-python3 refs/pcjr_byte.py selftest
+
+command: selftest|parse|emit|decode|patch|check|branch|rel8|rel16|selfloc
+
 ```
 
-Run after every server restart to confirm the byte workbench gates all
-pass against the frozen IRPING image.
+### grep_repo (new)
 
-## BDS registration
+Schema:
 
-- Server name: `pcjr-tools`
-- URL: `http://localhost:8765/mcp`
-- Re-register in BDS after adding or renaming tools.
+```json
+{
+  "mode": "query",
+  "query": "carrier_high_us|burst_us",
+  "context": 2,
+  "literal": false
+}
+```
 
-## Migration note
+- `query` — regex search over `facts.md`, `sessions/`, `docs/` (case-insensitive; `|` works).
+- `stats` — file/line counts per root.
+- `roots` — which roots exist.
+- Zero-arg hazard: every `grep_repo` call MUST include `mode`.
 
-Live legacy tool names — `query_ref`, `peek_ref`, `stats_ref`,
-`byte_selftest`, `byte_parse`, `byte_emit`, `byte_decode`,
-`byte_patch`, `byte_check`, `byte_branches`, `byte_rel8`,
-`byte_rel16`, `byte_selfloc` — are superseded by the `search_ref` /
-`debug_asm` dispatch. Implement the dispatch before relying on the
-canonical names in live calls; until then, the old names remain
-callable.
+## Registration (write once)
+
+In `refs/pcjr_ref_mcp.py`, import the engine and register a third tool:
+
+```
+from pcjr_repo_grep import TOOL_SCHEMA, dispatch
+
+# under your existing tool registration loop, add:
+#   name="grep_repo", schema=TOOL_SCHEMA, handler=dispatch
+```
+
+Then restart the server. Self-test:
+
+```
+bin/grep_selftest.sh
+```
+
+## Security posture (do not weaken)
+
+- Fixed roots: `facts.md`, `sessions/`, `docs/`. No `..`, no absolute paths.
+- No git binary, no subprocess, stdlib only.
+- Writes NEVER go through the server. Writes are user-owned via
+`bin/jr-commit.sh` and `bin/migrate_repo.py`.
+
+## Paste-first fallback
+
+When the server is down, the assistant asks you to run and paste:
+
+```
+git grep -n -i -E -C2 "carrier_high_us|burst_us|gap2" -- facts.md sessions docs
+```
 

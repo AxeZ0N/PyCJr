@@ -1,10 +1,13 @@
-# PCjr Design / Test Workflow (v4)
+# PCjr Design / Test Workflow (v5)
 
 ## Activation
 
 Use whenever the user asks to test, validate, verify, debug, or regress
 generated PCjr Cartridge BASIC or 8088 assembly, or whenever a
 machine-code experiment needs a verification path.
+
+- Repo is source of truth; BDS library is a runtime cache. Git wins on
+  drift.
 
 ## Loop Order (always)
 
@@ -33,13 +36,17 @@ Endpoint: `http://localhost:8765/mcp`
 | search_ref | query | query, context (3), max_pages (1) | English prose search |
 | search_ref | peek | start, end (1-based) | Raw entries by file position |
 | search_ref | stats | verbose (omit or true) | Diagnostics only |
+| debug_asm | command | dispatch table below | 8088 byte workbench |
+| grep_repo | query | query, context (2), literal (false) | Repo fact search |
+| grep_repo | stats | — | Repo file/line counts |
+| grep_repo | roots | — | Which roots exist |
 
 Usage:
 
 ```xml
 <BDS:AUTO:MCP url="pcjr-tools" tool="search_ref" args='{"mode":"query","query":"8255 bit assignments","context":3,"max_pages":1}'></BDS:AUTO:MCP>
 <BDS:AUTO:MCP url="pcjr-tools" tool="search_ref" args='{"mode":"peek","start":30,"end":36}'></BDS:AUTO:MCP>
-<BDS:AUTO:MCP url="pcjr-tools" tool="search_ref" args='{"mode":"stats"}'></BDS:AUTO:MCP>
+<BDS:AUTO:MCP url="pcjr-tools" tool="grep_repo" args='{"mode":"query","query":"carrier_high_us|gap2","context":2}'></BDS:AUTO:MCP>
 ```
 
 Traps:
@@ -49,12 +56,26 @@ table of contents.
 - Never pass `"verbose": false`. The BDS MCP client drops the request
 before transmission. Omit the field or pass true.
 - `peek` is 1-based. `start=0` returns an application error.
-- `query` searches English prose, not register tables. Use `peek` for
-register/port/BIOS facts. Appendix A is the full BIOS dump.
+- `query` (search_ref) searches English prose, not register tables. Use
+`peek` for register/port/BIOS facts. Appendix A is the full BIOS dump.
+- Every MCP call MUST include its required field: `search_ref` needs
+`mode`; `debug_asm` needs `command`; `grep_repo` needs `mode`.
 
-### Fallback mode: command + paste
+### Repo read path — grep_repo (Option A) + paste-first git grep
 
-When MCP is unavailable, ask the user to run and paste output:
+`grep_repo` reads `facts.md`, `sessions/`, and `docs/` only. Stdlib
+only, no git binary, no subprocess, fixed roots, loopback bind. A match
+is evidence, not automatically a clean fact.
+
+When MCP is unavailable, ask the user to run and paste:
+
+```
+git grep -n -i -E -C2 "carrier_high_us|burst_us|gap2" -- facts.md sessions docs
+```
+
+### Fallback mode: command + paste (manual strip)
+
+When MCP is unavailable for the manual, ask the user to run and paste:
 
 ```
 REF LOOKUP NEEDED
@@ -125,9 +146,7 @@ Example:
 <BDS:AUTO:MCP url="pcjr-tools" tool="debug_asm" args='{"command":"decode","hex_bytes":"0E1F55E800005D8DAE7A00"}'></BDS:AUTO:MCP>
 ```
 
-Zero-arg hazard: every `debug_asm` call MUST include `command`, and every
-`search_ref` call MUST include `mode`. Tools with an empty properties
-schema are dropped by the BDS MCP client before transmission.
+Zero-arg hazard: every `debug_asm` call MUST include `command`.
 
 ## Emission Gate (mandatory)
 
@@ -196,10 +215,11 @@ defect is in the changed code. If the anchor fails, run IRPING first.
 Change only one variable per iteration.
 
 Known anchors — identity only. Recorded readings live in the session
-handoff and `docs/test_log.md`, never here:
+handoff, `facts.md`, and `docs/test_log.md`, never here:
 
 - IRPING — golden regression artifact (DATA in platform skill Rule 5).
 - SHAPE3 Stage 3 — known-good early stage.
 - STAGE5 clean — known-good capture with keyboard intact.
 - CH0CAL — known-good CH0 timestamp capture.
+- ENVSHAPE — known-good envelope capture with keyboard intact.
 

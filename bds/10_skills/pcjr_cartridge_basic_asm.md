@@ -1,10 +1,14 @@
-# IBM PCjr Cartridge BASIC & 8088 Assembly — Canonical Verified Skill (v4)
+# IBM PCjr Cartridge BASIC & 8088 Assembly — Canonical Verified Skill (v5)
 
 ## Activation
 
 Use whenever the user requests code or design help for the IBM PCjr
 (4860/4861), PCjr Cartridge BASIC, PCjr 8088 assembly, or the PyCJr
 IR link.
+
+- Repo is source of truth; BDS library is a runtime cache. Git wins on
+  drift. Session-fresh readings live in `docs/test_log.md` and
+  `facts.md`, never here.
 
 ## Target Platform
 
@@ -156,6 +160,9 @@ and `falling>0`, `status=0` or `64`.
 | −INTA01 | 21h | 8259 PIC | Confirmed |
 ⚙
 
+Note: empirical values above are last-known. Session-fresh readings live
+in `docs/test_log.md` and `facts.md`; BDS memory supersedes if loaded.
+
 8253-5 decode: A6=1, A1/A0 select 40h-43h. Manual `Hex Range` print
 (40-47) is a formatting conflict; 44h-47h alias unverified.
 `; VERIFY: 44h-47h decode against PCjr Technical Reference`
@@ -237,7 +244,8 @@ These are empirical. Cross-check against the manual before changing the
 emulator.
 
 - Pi driver is active-high: pin LOW = LED off/idle, pin HIGH = LED on.
-- Carrier 40 kHz: 12 us high / 13 us low; burst ~62 us.
+- Carrier 40 kHz: 13 us high / 12 us low; burst ~62 us.
+(Supersedes the earlier 12/13 swap; see `facts.md` `carrier_high_us`.)
 - Emitter timings (silence between bursts, not burst duration):
 `start_silence_us=310`, `one_silence_us=377`,
 `zero_silence_1_us=220`, `zero_silence_2_us=157`,

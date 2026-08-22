@@ -3,34 +3,35 @@
 IBM PCjr (4860/4861) + Pi-driven IR keyboard link. Development toolkit,
 BDS import package, MCP server, and durable project record in one repo.
 
-## Directory map
+## Directory map (v5 living repo)
 
 | Path | Purpose |
 |---|---|
 | `bds/` | BDS import package (markdown only; the assistant reads this) |
-| `docs/` | Durable record: project state, test log, CH0 calibration, changelog |
-| `mcp/pcjr-tools.md` | Server ops: start, env, registration (human-facing) |
+| `facts.md` | Append-only fact journal (values; `supersedes:` lines) |
+| `sessions/` | Append-only narrative per scope (`YYYY-MM-DD_scope.md`) |
+| `docs/` | Compiled views / archive: test log, CH0 calibration, FAQ, changelog |
+| `mcp/pcjr-tools.md` | Server ops: start, env, registration, tool surface |
 | `refs/` | Manual strip + Python drivers (verbatim, moved manually) |
-| `bin/` | Server launcher + byte-workbench selftest |
+| `bin/` | `jr-commit.sh`, `migrate_repo.py`, `grep_selftest.sh`, server launcher |
 
 ## What the assistant can and cannot see
 
-- Sees: `bds/` (imported) + the live MCP tool surface (`search_ref`,
-  `debug_asm` once implemented).
-- Does not see: `docs/`, `mcp/`, `refs/`, `bin/`. Those are for you.
-  Bridge volatile state to the assistant via the session handoff.
+- Sees: `bds/` (imported) + live MCP tools (`search_ref`, `debug_asm`,
+  `grep_repo`).
+- Does not see: `facts.md`, `sessions/`, `docs/`, `mcp/`, `refs/`,
+  `bin/`. Those are for you. Bridge repo state via `grep_repo` calls or
+  paste-first `git grep`.
 
-## Keys to the label scheme
+## Two baseline commits (one-time)
 
-`MANIFEST.md` is the canonical artifact inventory — every file labeled
-with type, import target, version, and status. Consult it before adding
-or moving anything.
+```bash
+bin/jr-commit.sh --setup "machinery baseline" bin/... refs/... mcp/...
+bin/jr-commit.sh --setup "refactor baseline" facts.md sessions/... bds/... docs/... README.md MANIFEST.md
+```
 
-The single-source policy: each fact has one owner; everywhere else
-points, never restates.
+## Session loop
 
-- Platform skill owns hardware facts and IR protocol.
-- Workflow skill owns retrieval, tooling, stage gates, emission gate.
-- Project doc owns always-active rules, assumptions, open items.
-- `docs/ch0_calibration.md` owns CH0CAL-derived constants and defects.
-- `docs/test_log.md` owns run history (volatile readings).
+1. Start: `git log --oneline -20` + paste latest `sessions/*.md`.
+2. Work: skills govern; stage gates; contracts as now.
+3. End: assistant proposes facts.md appends + session file + optional
