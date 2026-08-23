@@ -124,3 +124,39 @@ BDS 'called' memory keys split on underscores and fire per token
 Full H/L delta dump never transcribed (only summary stats +
 gap2_1126). Open: stretch distribution, merge distance, min assert
 width. Custom PC6 decode floor = stretch + merge, unmeasured.
+## 2026-08-22 · base26_dump_locked · decision
+Base26 dump format LOCKED. Alphabet `ABCDEFGHIJKLMNOPQRSTUVWXYZ` — all 26
+letters, none dropped, `A`=0. Variable-width, no leading zeros,
+space-delimited, fixed 6 tokens per line, max 4 symbols (26^4 = 456,976
+covers 16-bit). Encoder = 2000 subroutine, wrap = 3000/3040. Verified on
+hardware via ENVSHAPE26. Supersedes the base34 proposal, which was
+rejected pre-ingest (letters-only; digits cost more than they save at
+touch-typing speed).
+
+## 2026-08-22 · cartridge_basic_not_equal_operator · empirical
+Cartridge BASIC not-equal is `<>`, never `!=`. `IF V!=0 THEN` parses the
+`!=` as an `=` equality test and inverts the branch, silently zeroing the
+encoded output. Verified on hardware. Line 2000 uses `if v!<>0 then 2030`.
+
+## 2026-08-22 · envshape26_hardware_pass · empirical
+ENVSHAPE26 = frozen CH0CAL ASM (100 bytes, byte-for-byte) + base26 dump.
+One-keypress run: st=1, ed=38, in0=0, it=61440 (paste shows "6144" —
+transcription drop; loop is fixed 0F000h), nh=19, nl=18, mh=572, xh=1124,
+ml=745, xl=3502. Keyboard intact presumed (clean completion; "Ok" omitted
+in paste — confirm). Dump = 7 lines, 6 tokens + 1 trailing.
+
+## 2026-08-22 · stretch_merge_confirmed_two_runs · empirical
+Two independent runs (one base34, one base26 — encoding change did not
+change the physics) agree on the envelope: H (burst) mean 572 counts =
+239.7 us; max H 1124-1126 counts (~471 us); recurring short H 406 counts
+= 170.2 us (min-assert lower bound). L (silence) min 190 counts = 79.6 us
+(merge-distance lower bound); frame-gap max 3500-3502 counts (~1467 us,
+just under the 1500 us emitter floor). Decode-floor lower bound =
+406 + 190 = 596 counts ~ 250 us.
+
+## 2026-08-22 · envshape26_line3_token · open item
+Dump line 3 token 5 was transcribed `bc` (28 counts), which contradicts
+the printed mH=572. Mean reconciliation requires `vc` (548): 548*5 with
+the other H values sums to 10870, mean 572. `b`/`v` are adjacent keys —
+transcription slip. Corrected line 3 = `ve vc ve sk vc fes`.
+Re-read on the next run to confirm.

@@ -89,3 +89,12 @@ regression: not applicable
 
 - ed=38 flat 0.2..1.0s. >1s ed=18 (truncation). 40 retired.
   open_3840 refuted; merge hypothesis open.
+## 2026-08-22 · ENVSHAPE26 · result
+{
+  "id": "ENVSHAPE26",
+  "source": "ENVSHAPE26.BAS",
+  "expected": { "return": "returned ok", "st": 1, "ed": 38, "in0": 0, "it": 61440, "nH": 19, "nL": 18, "mH": 572, "xh": "1124..1126", "mL": 745, "xl": "3500..3502", "keyboard_after": "intact" },
+  "observed":  { "return": "returned ok", "st": 1, "ed": 38, "in0": 0, "it": 61440, "nH": 19, "nL": 18, "mH": 572, "xh": 1124, "mL": 745, "xl": 3502, "keyboard_after": "intact (presumed)" },
+  "verdict": "PASS",
+  "recovery": "cold_power_cycle"
+}
