@@ -160,3 +160,65 @@ the printed mH=572. Mean reconciliation requires `vc` (548): 548*5 with
 the other H values sums to 10870, mean 572. `b`/`v` are adjacent keys —
 transcription slip. Corrected line 3 = `ve vc ve sk vc fes`.
 Re-read on the next run to confirm.
+## 2026-08-22 · kbdnmi_pinned_span · listing-verified
+
+KBDNMI (entry 338) pins the CPU from CLI 0F76 to STI 0FF4, no yield
+point. Start bit: 5-sample majority >=3 (CX=5). Trailing-edge hunt:
+CX=50 watchdog. CH1 latched reads via 43h/41h (0FAB). 8 data bits x2
+biphase samples, opposite-half compare (0FC9). Parity x2, odd check
+(0FE1). MOV AL,BH / INT 48h (0FF5).
+
+## 2026-08-22 · stock_cpu_floor · analysis
+
+Exclusive CPU per frame = 10 cells x 440 us = 4.4 ms (start+8
+data+parity). Per byte 3.52 ms. Free tail = stop + 11 stop bits = 12
+cells = 5.28 ms. Per scancode 9.68 ms; per keypress (make+break) 19.36
+ms. Hard floor for receiver-only designs: CPU is the de-serializer - no
+FIFO/8042/8251 between PC6 and RAM.
+
+## 2026-08-22 · stop_bits_reason · manual-verified
+
+Entry 94: eleven stop bits are inserted "to allow some processor
+bandwidth between keystrokes to honor other types of interrupts, such
+as serial and time-of-day." CPU-service headroom, not RF/AGC.
+
+## 2026-08-22 · kbdnmi_comment_conflicts · conflict
+
+Entry 338 listing vs comments: (a) 0FC6 BA 0220 = 544 -> 456 us at
+1.1925 MHz, comment says "310 us"; (b) 0FCC BA 020E = 526 -> 441 us =
+one full cell, comment says "next half bit"; (c) listing samples parity
+then jumps straight to INT 48h - the manual's 11th (stop) bit is never
+consumed. Three discrepancies recorded, none resolved.
+
+## 2026-08-22 · no_free_timer_irq · manual-verified
+
+Only maskable timer IRQ: CH0->IRQ0->INT 08h (time-of-day, 18.2 Hz =
+1193180/65536). CH1 (41h) is CPU-read-only - KBDNMI polls it, never
+interrupt-driven (entry 338, subroutine I30). CH2 (42h) = audio/PC5, no
+interrupt output. Keyboard arrives on the NMI pin (INT 02h), not the
+8259; no NMI->timer chaining on this board.
+
+## 2026-08-22 · biphase_agc_hypothesis · analysis
+
+Hypothesis: biphase is load-bearing as AGC DC-balance (every 440 us
+cell carries exactly one burst -> ~50% duty), not as self-clocking
+(KBDNMI times with CH1, listing-verified). Mechanism unverified. Do not
+drop biphase without the AGC profile probe (burst-silence-burst envelope
+measurement).
+
+## 2026-08-22 · parallel_decode_non_goal · decision
+
+Interrupt-driven parallel decode rejected: no free timer IRQ;
+single-task Cartridge BASIC has no concurrent workload to protect.
+Cooperative CH0-latched scheduling is feasible (~2100 cycles/cell
+budget, sample ~30-50 cycles) but is a solution in search of a problem
+here. Not a build item.
+
+## 2026-08-22 · paste_throughput_target · decision
+
+Actual PyCJr goal: one-way paste speed into Cartridge BASIC. Levers in
+hand: 1500 us frame gap (banked, 1.5x vs 11-stop-bit stock), dense
+per-event encoding, cooperative CH0 decoder. Decoder was replaceable but
+non-binding; transmitter was the immutable floor; PyCJr is the first
+owner of both ends.
+
