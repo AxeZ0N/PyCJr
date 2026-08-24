@@ -417,3 +417,48 @@ while grep_all locates code/config symbols (flags, defines, handlers).
 Cap is mandatory under tool_call_discipline: observed 190 matches for
 a generic token, returned 5, truncated=true.
 Verified end-to-end over MCP after server/BDS restart.
+## 2026-08-24 · pycjr_run_test_harness_contract · empirical
+Live pycjr.py (root, 664 lines) implements `--run_test FILE` with
+`nargs='?'`, plus `--spec`, `--arm`, `--post`, `--battery`. Trial file
+grammar: `label, lead_us, on,off, on,off, ...`; `#` starts a comment,
+blank lines are skipped. `build_probe_wave(lead, pairs)` emits lead
+silence, then per pair an `on_us` 40 kHz carrier burst followed by
+`off_us` silence; the final `off` is trailing. `run_battery` sequences
+cls/run/enter/arm/wave/post. `run_suite` batches by `--battery`
+(default 4). `bin/pycjr.py` is stale (`store_true`/`testing_macro`);
+the live Pi file is authoritative for the harness.
+
+## 2026-08-24 · threshold_pinning_battery_spec · decision
+Threshold pinning battery: W=62 us, lead=0, trailing=5000 us.
+Merge sweep S=180/190/200/210; recovery sweep S=260/300/340/380.
+8 trials, default `--battery 4` -> two batches (merge, recovery).
+Delivered as `threshold_battery.txt`; spec recorded here.
+
+## 2026-08-24 · ground_truth_anchor_convention · policy
+Every hardware-passed program gets `docs/anchors/<PROG>.BAS` and
+`docs/anchors/<PROG>.ASM`. Session handoff gains a mandatory fifth
+section, Ground truth, listing anchor paths. No listing present means
+the session cannot close. DATA blocks must byte-match the ASM;
+regenerate via `debug_asm`, never hand-roll. Retype path is
+`docs/anchors/`, never back-issues of sessions.
+
+## 2026-08-24 · agcprobe_anchor_restored · decision
+AGCPROBE.BAS restored from user transcription; included in payload at
+`docs/anchors/AGCPROBE.BAS`. DATA 1000-1100 byte-identical to the
+ENVSHAPE block, matching the CH0CAL.ASM 100-byte image.
+
+## 2026-08-24 · ch0cal_asm_anchor_restored · decision
+CH0CAL.ASM included in payload at `docs/anchors/CH0CAL.ASM`; design
+logic for the 100-byte image used by ENVSHAPE.BAS and AGCPROBE.BAS.
+
+## 2026-08-24 · session_title_scope_policy · open item
+Session sidebar titles are all "PCJr Session Start"; useless for
+retrieval. The system prompt final line must instruct the first
+assistant message to state the active scope explicitly so the platform
+can use it as the session title. User to edit `bds/00_system_prompt.md`.
+Until applied, titles remain generic.
+
+## 2026-08-24 · ingest_payload_extension · decision
+Payload contract extended to accept `docs/anchors/` files so
+`unzip payload.zip` places anchors correctly. Update `jr-ingest.sh`
+or the manual unzip path accordingly.
