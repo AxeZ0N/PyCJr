@@ -137,3 +137,75 @@ regression: not applicable
     "ed>=3 dump gate discarded merged-high width on S=157/80/40; next probe needs ed>=2 dump."
   ]
 }
+# 2026-08-24 · threshold pinning battery 1 (merge+recovery)
+
+{
+  "id": "threshold_battery_1",
+  "source": "threshold_battery.txt",
+  "regression": "CH0CAL",
+  "recovery": "cold_power_cycle",
+  "contract": {
+    "stimulus": "W=62us two-burst, lead=0, trailing=5000us",
+    "sweep": "merge S=180/190/200/210, recovery S=260/300/340/380"
+  },
+  "results": [
+    {"S":180,"ed":4,"H":"550 406","L":188},
+    {"S":190,"ed":4,"H":"550 478","L":188},
+    {"S":200,"ed":4,"H":"550 478","L":188},
+    {"S":210,"ed":4,"H":"550 478","L":188},
+    {"S":260,"ed":4,"H":"550 550","L":188},
+    {"S":300,"ed":4,"H":"550 548","L":334},
+    {"S":340,"ed":4,"H":"550 550","L":476},
+    {"S":380,"ed":4,"H":"550 500","L":476}
+  ],
+  "notes": "S=380 H2=500 transient; did not reproduce in battery 3."
+}
+
+# 2026-08-24 · threshold pinning battery 2 (knee pinning)
+
+{
+  "id": "threshold_battery_2",
+  "source": "threshold_battery_2.txt",
+  "regression": "CH0CAL",
+  "recovery": "cold_power_cycle",
+  "contract": {
+    "stimulus": "W=62us two-burst, lead=0, trailing=5000us",
+    "sweep": "fuse S=160/165/170/175, recovery S=230/240/250, repeats 300/340/380"
+  },
+  "results": [
+    {"S":160,"ed":2,"note":"fused"},
+    {"S":165,"ed":2,"note":"fused"},
+    {"S":170,"ed":2,"note":"fused"},
+    {"S":175,"ed":4,"H":"550 406","L":188},
+    {"S":230,"ed":4,"H":"550 478","L":188},
+    {"S":240,"ed":4,"H":"550 550","L":188},
+    {"S":250,"ed":4,"H":"550 550","L":188},
+    {"S":300,"ed":4,"H":"550 548","L":334},
+    {"S":340,"ed":4,"H":"550 550","L":476},
+    {"S":380,"ed":4,"H":"550 550","L":476}
+  ],
+  "notes": "S=380 L=476 repeats battery 1 S=340; S=380 H2 anomaly retired."
+}
+
+# 2026-08-24 · anomaly knock-out battery 3
+
+{
+  "id": "threshold_battery_3",
+  "source": "threshold_battery_3.txt",
+  "regression": "CH0CAL",
+  "recovery": "cold_power_cycle",
+  "contract": {
+    "stimulus": "batch1 W=250/S=5000 x4, batch2 W=62 S=310/320/330/335"
+  },
+  "results": [
+    {"S":5000,"W":250,"H1":1054,"H2":1054,"L":11492},
+    {"S":5000,"W":250,"H1":1126,"H2":1124,"L":11422},
+    {"S":5000,"W":250,"H1":1126,"H2":1054,"L":11420},
+    {"S":5000,"W":250,"H1":1126,"H2":1126,"L":11380},
+    {"S":310,"W":62,"H":"550 548","L":334},
+    {"S":320,"W":62,"H":"550 550","L":404},
+    {"S":330,"W":62,"H":"550 548","L":406},
+    {"S":335,"W":62,"H":"550 550","L":404}
+  ],
+  "notes": "W250 asymmetry intermittent (1/4); L staircase jumps 310->320 (334->404)."
+}

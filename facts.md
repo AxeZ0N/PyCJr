@@ -462,3 +462,51 @@ Until applied, titles remain generic.
 Payload contract extended to accept `docs/anchors/` files so
 `unzip payload.zip` places anchors correctly. Update `jr-ingest.sh`
 or the manual unzip path accordingly.
+## 2026-08-24 · agc_h_ratio_staircase · empirical
+
+PC6 demodulated envelope, W=62us two-burst probes. H2/H1 amplitude ratio
+is quantized, not a smooth recovery ramp. Three discrete states only:
+
+- fused (S <= 170us, ed=2)
+- 0.74 compressed (S=175us, H2=406ct)
+- 0.87 attenuated plateau (S=190–230us, H2=478ct)
+- 1.00 full recovery (S >= 240us, H2=550ct)
+
+Transitions are near-vertical. Suggests discrete AGC gain stages, not RC
+decay. Supersedes: the (220,440) and (220,260) monotonic-recovery reading.
+See 2026-08-24_threshold_pinning.md.
+
+## 2026-08-24 · agc_fuse_threshold · empirical
+
+Fuse boundary pinned to (170,175]us for W=62us. S=170 merges (ed=2),
+S=175 resolves (ed=4, H2/H1=0.74). Stock zero2 (157us) is inside the
+fused regime; this is the mechanical root of the 38-vs-40 edge count.
+
+## 2026-08-24 · agc_full_recovery_threshold · empirical
+
+Full H2 recovery pinned to (230,240]us for W=62us. S=230 reads 0.87,
+S=240 reads 1.00. Stock zero1 (220us) resolves but attenuated; start
+(310us) and one (377us) fully recovered. Custom decoder floor = 240us.
+
+## 2026-08-24 · agc_l_staircase · empirical
+
+L (low-time) is also quantized, not smooth. W=62us, S sweep 300–380us:
+334ct at S=300/310, jumps to ~404ct at S=320/330/335, jumps to 476ct at
+S=340/380. Steps ~30us. Mechanism unverified; consistent with discrete
+receiver-side quantization or probe code-path latency. L = S − 180us
+holds again at large S (W=250/S=5000: 11420–11492 vs 11502 predicted).
+
+## 2026-08-24 · w250_asymmetry_retired · empirical
+
+W=250/S=5000 asymmetry (1126/1052) did not reproduce in four repeats:
+three symmetric, one 72ct split. Intermittent edge-trigger jitter on the
+soft falling edge of a W>=250us burst, not magnitude-dependent recovery.
+Retired. H at W=250 wanders 1054–1126ct at identical stimulus.
+
+## 2026-08-24 · demod_envelope_staircase · analysis
+
+The entire PC6 demod envelope is quantized: H amplitude in three states,
+L timing in discrete steps. Amplitude is therefore unusable as a signal
+for a custom edge decoder; timing is the only reliable channel. Confirms
+the earlier "timing only" design rule; upgrades it from hypothesis to
+empirical fact.
