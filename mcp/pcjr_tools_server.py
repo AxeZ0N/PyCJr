@@ -7,7 +7,7 @@ verified pcjr_asm_debug workbench, and the read-only repo grep engine:
     search_ref  mode=query|peek|stats
     debug_asm   command=selftest|parse|emit|decode|patch|check|branch|
                 rel8|rel16|selfloc
-    grep_repo   mode=query|stats|roots|read
+    grep_repo   mode=query|read|grep_all|stats|roots
 
 Each tool declares a required discriminator ("mode" / "command") so the
 BDS MCP client never drops them. The reference strip and repo are loaded
@@ -251,15 +251,20 @@ def grep_repo(
     literal: bool = False,
     path: Optional[str] = None,
     max_lines: int = 2000,
+    max_matches: int = 50,
 ) -> str:
-    """Read-only repo fact search over facts.md, sessions/, docs/.
+    """Read-only repo tool over the PyCJr repo.
 
     mode:
-        query     Case-insensitive regex search. Needs 'query'.
-        stats     File/line counts per root.
-        roots     Which roots exist.
-        read      Full file by root-relative path. Needs 'path'
-                  (optional: max_lines, default 2000). Safety-guarded.
+        query     Fact-layer regex search (facts.md, sessions/, docs/).
+                  Needs 'query'.
+        stats     Fact-layer file/line counts.
+        roots     Which fact-layer roots exist.
+        read      Full file by root-relative path, whole repo (text only,
+                  hidden paths refused). Needs 'path'. JSON return.
+        grep_all  Regex search across whole repo (text files only, hidden
+                  paths refused). Needs 'query'. JSON return; capped by
+                  max_matches.
     """
     try:
         result = GREP.dispatch(
@@ -269,9 +274,9 @@ def grep_repo(
             literal=literal,
             path=path,
             max_lines=max_lines,
+            max_matches=max_matches,
         )
-        if mode == "read":
-            # Preserve truncation/total metadata; do not strip to bare text.
+        if mode in ("read", "grep_all"):
             return json.dumps(result, indent=2)
         if isinstance(result, dict) and "text" in result:
             return result["text"]
