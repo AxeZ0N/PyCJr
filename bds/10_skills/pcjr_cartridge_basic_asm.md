@@ -145,19 +145,20 @@ and `falling>0`, `status=0` or `64`.
 
 ## Rule 6 — Hardware Map with Verification Status
 
-| Register ↕▾ | Address ↕▾ | Purpose ↕▾ | Status ↕▾ |
+| Register ↕▾ ↕▾ | Address ↕▾ ↕▾ | Purpose ↕▾ ↕▾ | Status ↕▾ ↕▾ |
 |---|---|---|---|
-| −PORT_A | 60h | 8255 Port A output | Confirmed + manual-verified |
-| −PORT_B | 61h | 8255 Port B output | Confirmed + manual-verified |
-| −PORT_C | 62h | 8255 Port C input | Confirmed + hardware-verified |
-| −CMD_PORT | 63h | 8255 control | Confirmed |
-| −TIMER0 | 40h | 8253 counter 0 (CH0). Input clock 2.38636 MHz (14.31818/6 = CPU/2), empirical | Confirmed; clock empirical |
-| −TIMER1 | 41h | 8253 counter 1 (keyboard de-serialize; 1.1925 MHz clk when A0h D5=0) | manual-verified (entries 31/34) |
+| −−PORT_A | 60h | 8255 Port A output | Confirmed + manual-verified |
+| −−PORT_B | 61h | 8255 Port B output | Confirmed + manual-verified |
+| −−PORT_C | 62h | 8255 Port C input | Confirmed + hardware-verified |
+| −−CMD_PORT | 63h | 8255 control | Confirmed |
+| −−TIMER0 | 40h | 8253 counter 0 (CH0). Input clock 2.38636 MHz (14.31818/6 = CPU/2), empirical | Confirmed; clock empirical |
+| −−TIMER1 | 41h | 8253 counter 1 (keyboard de-serialize; 1.1925 MHz clk when A0h D5=0) | manual-verified (entries 31/34) |
 | −TIMER2 | 42h | 8253 counter 2 (sound source; IR test 40 kHz when A0h D6=1) | manual-verified (entries 31/34) |
 | −TIM_CTL | 43h | 8253 control | Confirmed |
 | −NMI_PORT | A0h | NMI mask / control | Confirmed + manual-verified |
 | −INTA00 | 20h | 8259 PIC | Confirmed |
 | −INTA01 | 21h | 8259 PIC | Confirmed |
+| ⚙ |  |  |  |
 ⚙
 
 Note: empirical values above are last-known. Session-fresh readings live
@@ -338,4 +339,15 @@ The digitized manual is authoritative but noisy. If a query conflicts
 with measured behavior, record both and do not silently override either.
 Never claim a manual value was verified without search_ref output or
 pasted user output.
+
+## Anchors
+
+Anchor ground truth lives in `docs/anchors/`, never in this skill.
+
+- ENVSHAPE.BAS  -> docs/anchors/ENVSHAPE.BAS   (frozen BASIC runner)
+- CH0CAL.ASM    -> docs/anchors/CH0CAL.ASM     (design logic)
+- AGCPROBE.BAS  -> docs/anchors/AGCPROBE.BAS   (probe capture variant)
+
+Agreement rule: DATA blocks in `.BAS` must byte-match the corresponding
+`.ASM`. Regenerate via `debug_asm`, never hand-roll.
 

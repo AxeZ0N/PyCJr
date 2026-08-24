@@ -126,18 +126,19 @@ value without the tag.
 
 Server: `pcjr-tools`. Single tool, `command` dispatch:
 
-| Command ↕▾ | Args ↕▾ |
+| Command ↕▾ ↕▾ | Args ↕▾ ↕▾ |
 |---|---|
-| −selftest | mode="all" (after server restart) |
-| −parse | text |
-| −emit | hex_bytes |
-| −decode | hex_bytes |
-| −patch | hex_bytes, patches=[{offset,value}] |
-| −check | hex_bytes, expected_hex |
-| −branch | hex_bytes, checks=[{at,target}] |
-| −rel8 | insn, target |
-| −rel16 | insn, target |
-| −selfloc | pop_offset, base=128 |
+| −−selftest | mode="all" (after server restart) |
+| −−parse | text |
+| −−emit | hex_bytes |
+| −−decode | hex_bytes |
+| −−patch | hex_bytes, patches=[{offset,value}] |
+| −−check | hex_bytes, expected_hex |
+| −−branch | hex_bytes, checks=[{at,target}] |
+| −−rel8 | insn, target |
+| −−rel16 | insn, target |
+| −−selfloc | pop_offset, base=128 |
+| −⚙ |  |
 ⚙
 
 Example:
@@ -175,14 +176,15 @@ expectations into a timer, video, or sound routine.
 
 ## Stage Gate (mandatory)
 
-| Stage ↕▾ | New risk ↕▾ | Pass condition ↕▾ |
+| Stage ↕▾ ↕▾ | New risk ↕▾ ↕▾ | Pass condition ↕▾ ↕▾ |
 |---|---|---|
-| −1 Bridge stub | PUSH CS / POP DS / RETF | Returns RETURNED OK |
-| −2 Self-location | call get_ip / pop bp | Writes a known byte at O+128 |
-| −3 Result stores | Explicit stores O+128/130/132 | BASIC reads expected values |
-| −4 IN from target port | Port access | Status changes as documented |
-| −5 Polling loop | Edge counters | Edges observed on stimulus |
-| −6 Full capture | Complete routine | All contract fields match |
+| −−1 Bridge stub | PUSH CS / POP DS / RETF | Returns RETURNED OK |
+| −−2 Self-location | call get_ip / pop bp | Writes a known byte at O+128 |
+| −−3 Result stores | Explicit stores O+128/130/132 | BASIC reads expected values |
+| −−4 IN from target port | Port access | Status changes as documented |
+| −−5 Polling loop | Edge counters | Edges observed on stimulus |
+| −−6 Full capture | Complete routine | All contract fields match |
+| −⚙ |  |  |
 ⚙
 
 If a stage fails, the defect is in the bytes added in that stage.
@@ -222,4 +224,15 @@ handoff, `facts.md`, and `docs/test_log.md`, never here:
 - STAGE5 clean — known-good capture with keyboard intact.
 - CH0CAL — known-good CH0 timestamp capture.
 - ENVSHAPE — known-good envelope capture with keyboard intact.
+- AGCPROBE — known-good envelope probe capture (AGCPROBE.BAS, CH0CAL ASM).
+
+## Anchor Ground Truth and Retype Path
+
+- Anchor ground truth lives in `docs/anchors/<PROG>.BAS` and
+`docs/anchors/<PROG>.ASM`. To retype an anchor, read those files —
+never back-issues of sessions.
+- A program earns its anchor files in the same session it first passes
+hardware. Never defer anchor file creation.
+- DATA blocks must byte-match the ASM via `debug_asm`; hand-rolled
+bytes are a process violation.
 
