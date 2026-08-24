@@ -398,3 +398,22 @@ BDS memory batch. Identify generic tokens poisoning called keys
 pointers. Hit-rate measurement is not possible from inside the
 session; needs a platform-level memory-audit view (BDS feature
 request). Until then: static audit only.
+## 2026-08-24 · grep_repo_read_fullrepo · decision
+grep_repo `read` mode scope extended from the three fact-layer roots
+to the whole repo (root-relative path, text suffixes only).
+Supersedes the three-root rule in grep_repo_read_mode (2026-08-24).
+Guards unchanged and verified: absolute path refused, `..` refused,
+any hidden path component refused (.git/config test), symlink escape
+refused, non-text suffix refused, max_lines truncation explicit.
+Verified: read pycjr.py max_lines=30 -> 30 lines, truncated=true,
+total_lines=554.
+
+## 2026-08-24 · grep_repo_grep_all · decision
+New mode `grep_all`: whole-repo regex search over text files (same
+guard set as read), capped by max_matches (default 50). Returns
+total_matches, returned, truncated, files_searched, text. `query`
+stays fact-layer-only; the split keeps curated fact search clean
+while grep_all locates code/config symbols (flags, defines, handlers).
+Cap is mandatory under tool_call_discipline: observed 190 matches for
+a generic token, returned 5, truncated=true.
+Verified end-to-end over MCP after server/BDS restart.
