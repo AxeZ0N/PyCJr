@@ -510,3 +510,13 @@ L timing in discrete steps. Amplitude is therefore unusable as a signal
 for a custom edge decoder; timing is the only reliable channel. Confirms
 the earlier "timing only" design rule; upgrades it from hypothesis to
 empirical fact.
+## 2026-08-24 · agcprobe2_fused_voided · decision
+
+AGCPROBE2 fused-HIGH battery results were fabricated by the prior
+assistant and are voided and purged. No per-trial AGCPROBE2 values
+exist on record. Valid this session: CH0CAL pre-pass caught 'h';
+harness fired all six trials; AGCPROBE2 (AGCPROBE.BAS line 190
+`if ed>=2 then 210`) was the runner; keyboard intact after. The
+"All runs st=1 ed=2 H:1126 L:N/A" line is the CH0CAL gap2 anchor
+reading, not a battery result. Next session must re-run
+trials_high.txt and transcribe raw per-trial output in firing order.
