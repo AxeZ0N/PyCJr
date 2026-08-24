@@ -344,3 +344,57 @@ BDS ENVSHAPE anchor listing dropped $ on x$/h$/l$/hx$ and mangled
 continuation lines (x="", h="", l=""). Under defint a-z these throw
 "Type mismatch" at line 30. Corrected in BDS runtime cache; the repo
 skill listing must get the same fix to survive a cache rebuild.
+## 2026-08-24 · grep_repo_read_mode · decision
+grep_repo `read` mode landed stdlib-pure (no git, no subprocess).
+Args: path (root-relative, required), max_lines (default 2000).
+Return: {path, lines, text, truncated, total_lines}; text is 1-based
+`line_no\tcontent` lines. Safety guard rejects absolute paths, `..`
+traversal, non-root first component (facts.md|sessions|docs),
+non-text suffix, and symlink escapes outside repo root. Modes are now
+query|read|stats|roots. Server handler returns read results as JSON;
+query mode still returns text.
+
+## 2026-08-24 · grep_repo_read_verified · empirical
+Three MCP probes + one workflow trace passed after server/BDS restart.
+- read facts.md max_lines=10 → lines=10, truncated=true, total_lines=346
+- read ../facts.md → "path traversal refused"
+- read refs/pcjr_repo_grep.py → "path must start with one of [...]"
+- Workflow: query gap2_1126 → fact at facts.md:302 + owner session →
+  read sessions/2026-08-24_agc_profile_probe.md → cross-check consistent.
+BDS refreshed its fingerprint; path/max_lines now in the schema.
+
+## 2026-08-24 · grep_repo_history_paste_first · policy
+No revs/read_rev/diff modes. History stays paste-first:
+`git log -- <path>` then `git show REV:path`.
+Rationale: facts.md and sessions/ are append-only with `supersedes:`,
+so the working tree is already the archive; docs/ regenerate from
+facts + sessions.
+Re-open trigger: if facts.md or sessions/ shift to edit-in-place,
+revisit revs/read_rev.
+
+## 2026-08-24 · tool_call_discipline · policy
+Observed: every MCP tool call re-injects full context (skills, memory,
+MCP fingerprint), so call count is the dominant token cost.
+Repo lookup rule: one clustered grep_repo query → one read of the
+owning file → cross-check in-model → second call only on conflict.
+Target: two tool round-trips per repo workflow; never re-run guard
+probes in normal operation.
+
+## 2026-08-24 · memory_selection_heuristic · analysis
+The injected memory block contains the ENTIRE batch every turn: all
+always keys plus all called keys. The keyword gate is not pruning in
+practice because trigger tokens are ubiquitous in this project
+(system prompt says "PCjr" constantly; carrier/timer/frame/read/tool
+terms pervade session text). Conclusion: the always vs called level
+distinction buys almost no token savings here. The only real token
+lever is shorter VALUES, not level placement. Static audit (keyword
+specificity, value length, pointer-not-full-spec) is the best proxy
+until platform hit-rate telemetry exists.
+
+## 2026-08-24 · memory_keyword_audit_due · open item
+Mandatory future pass (not now): evaluate keyword selections for the
+BDS memory batch. Identify generic tokens poisoning called keys
+(read, tool, frame, carrier, port); rename keys or demote values to
+pointers. Hit-rate measurement is not possible from inside the
+session; needs a platform-level memory-audit view (BDS feature
+request). Until then: static audit only.
