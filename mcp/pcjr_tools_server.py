@@ -7,7 +7,7 @@ verified pcjr_asm_debug workbench, and the read-only repo grep engine:
     search_ref  mode=query|peek|stats
     debug_asm   command=selftest|parse|emit|decode|patch|check|branch|
                 rel8|rel16|selfloc
-    grep_repo   mode=query|stats|roots
+    grep_repo   mode=query|stats|roots|read
 
 Each tool declares a required discriminator ("mode" / "command") so the
 BDS MCP client never drops them. The reference strip and repo are loaded
@@ -249,16 +249,30 @@ def grep_repo(
     query: Optional[str] = None,
     context: int = 2,
     literal: bool = False,
+    path: Optional[str] = None,
+    max_lines: int = 2000,
 ) -> str:
     """Read-only repo fact search over facts.md, sessions/, docs/.
 
     mode:
-        query  Case-insensitive regex search. Needs 'query'.
-        stats  File/line counts per root.
-        roots  Which roots exist.
+        query     Case-insensitive regex search. Needs 'query'.
+        stats     File/line counts per root.
+        roots     Which roots exist.
+        read      Full file by root-relative path. Needs 'path'
+                  (optional: max_lines, default 2000). Safety-guarded.
     """
     try:
-        result = GREP.dispatch(mode, query, context, literal)
+        result = GREP.dispatch(
+            mode=mode,
+            query=query,
+            context=context,
+            literal=literal,
+            path=path,
+            max_lines=max_lines,
+        )
+        if mode == "read":
+            # Preserve truncation/total metadata; do not strip to bare text.
+            return json.dumps(result, indent=2)
         if isinstance(result, dict) and "text" in result:
             return result["text"]
         return json.dumps(result, indent=2)
