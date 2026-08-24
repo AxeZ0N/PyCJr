@@ -4,6 +4,7 @@ PCjr stock IR keyboard emulator — integrated prototype.
 
 Backend: reduced PCjrIRSender (frame/press/wave only, verified).
 Outer layer: text input, atomic Shift handling, 50 chars/sec throttle.
+Test harness: --run_test probe batteries (file / --spec / interactive).
 
 Still stubs / intentionally omitted:
   - ANSI escape -> F-keys/arrows (ESC_MAP) : native PCjr codes unverified
@@ -103,7 +104,6 @@ SHIFT = {
 # ----------------------------------------------------------------------
 # Native PCjr F-key chords
 # ----------------------------------------------------------------------
-# F1-F10 are Fn + top-row digit scancodes. F11-F12 are standalone.
 FKEY_SCANCODES = {
     1: 0x02,
     2: 0x03,
@@ -119,7 +119,6 @@ FKEY_SCANCODES = {
     12: 0x58,
 }
 
-# ANSI F-key sequences -> F-key number.
 ESC_FKEY_MAP = {
     b"\x1bOP": 1,
     b"\x1bOQ": 2,
@@ -135,8 +134,6 @@ ESC_FKEY_MAP = {
     b"\x1b[24~": 12,
 }
 
-# Verified by measurement: these scancodes are accepted by the PCjr and
-# translated correctly by KEY62-INT when sent as standalone make+break.
 ESC_MAP = {
     b"\x1b[A": 0x48,
     b"\x1b[B": 0x50,
@@ -166,14 +163,12 @@ ESC_MAP = {
     b"\x1b[24~": 0x58,
 }
 
-# VERIFY: SHIFT_SCAN against previous working table if regenerated.
-# Standard left Shift scancode.
 SHIFT_SCAN = 0x2A
 FN_SCAN = 0x54
 
 
 # ----------------------------------------------------------------------
-# Reduced sender — frame/press/wave only. Do not extend beyond this.
+# Reduced sender — frame/press/wave only.
 # ----------------------------------------------------------------------
 class PCjrIRSender:
     def __init__(
@@ -224,10 +219,11 @@ class PCjrIRSender:
     def _silence(self, us):
         return [self._idle_pulse(us)]
 
-    def _burst(self):
+    def _burst_for(self, us):
+        """40 kHz carrier for `us` microseconds. Starts with the idle-low half."""
         pulses = []
         on = False
-        remaining = self.burst_us
+        remaining = us
         half = self.carrier_half_a
         while remaining > 0:
             d = min(half, remaining)
@@ -240,6 +236,9 @@ class PCjrIRSender:
                 else self.carrier_half_a
             )
         return pulses
+
+    def _burst(self):
+        return self._burst_for(self.burst_us)
 
     # -- frame construction ----------------------------------------------
     def build_frame(self, scan):
@@ -269,6 +268,22 @@ class PCjrIRSender:
             p += self._silence(self.one_silence_us)
 
         p += self._silence(self.frame_gap_us)
+        return p
+
+    def build_probe_wave(self, lead_us, pairs):
+        """Custom stimulus: lead silence, then (burst_us, off_us) segments.
+
+        No start/parity/stop structure. `pairs` is an ordered list of
+        (on_us, off_us) tuples; the final off_us is the trailing silence.
+        """
+        p = []
+        if lead_us > 0:
+            p += self._silence(lead_us)
+        for on_us, off_us in pairs:
+            if on_us > 0:
+                p += self._burst_for(on_us)
+            if off_us > 0:
+                p += self._silence(off_us)
         return p
 
     def key_press_pulses(self, scan):
@@ -306,13 +321,8 @@ class PCjrEmulator(PCjrIRSender):
         self.char_interval_s = 1.0 / max(1, chars_per_sec)
         self._last_char_time = 0.0
 
-    # -- character layer --------------------------------------------------
     def send_char(self, ch, use_enter_delay=True):
-        """Send one character as an atomic make+break sequence.
-
-        Shift is pressed and released inside the same wave, so an
-        interrupted send cannot leave Shift stuck on the PCjr.
-        """
+        """Send one character as an atomic make+break sequence."""
         if ch in SCAN:
             self.send_key_press(SCAN[ch])
             if ch == '\n': time.sleep(0.5)
@@ -326,18 +336,16 @@ class PCjrEmulator(PCjrIRSender):
             raise ValueError(f"No scan code mapping for character: {ch!r}")
 
         self.send_wave(
-            self.build_frame(SHIFT_SCAN)  # Shift make
-            + self.key_press_pulses(base)  # key make+break
-            + self.build_frame(SHIFT_SCAN | 0x80)  # Shift break
+            self.build_frame(SHIFT_SCAN)
+            + self.key_press_pulses(base)
+            + self.build_frame(SHIFT_SCAN | 0x80)
         )
 
     def send_text(self, text):
-        """Send text with conservative pacing; one key at a time."""
         for ch in text:
             self.send_char(ch)
             self._throttle()
 
-    # -- pacing -----------------------------------------------------------
     def _throttle(self):
         now = time.monotonic()
         wait = self._last_char_time + self.char_interval_s - now
@@ -346,11 +354,6 @@ class PCjrEmulator(PCjrIRSender):
         self._last_char_time = time.monotonic()
 
     def send_ansi_escape(self, seq):
-        """Send one ANSI terminal escape sequence.
-
-        F-keys use the native Fn+digit chord via send_fkey().
-        Other sequences use the measured ESC_MAP scancodes.
-        """
         if isinstance(seq, str):
             seq = seq.encode("latin-1")
 
@@ -365,11 +368,9 @@ class PCjrEmulator(PCjrIRSender):
         self.send_key_press(scan)
 
     def send_scan(self, scan):
-        """Send one raw make+break scancode, bypassing the character tables."""
         self.send_key_press(scan)
 
     def _modifier_tap(self, mod_scan, tap_scan):
-        """Press mod_scan, tap tap_scan, release mod_scan. Atomic."""
         self.send_wave(
             self.build_frame(mod_scan)
             + self.key_press_pulses(tap_scan)
@@ -377,15 +378,9 @@ class PCjrEmulator(PCjrIRSender):
         )
 
     def send_ctrl_break(self):
-        """Ctrl+Break = Fn+B on the PCjr. Verified."""
         self._modifier_tap(FN_SCAN, SCAN["b"])
 
     def send_fkey(self, n):
-        """Send F-key n (1-12).
-
-        F1-F10 use the native Fn+digit chord.
-        F11-F12 use verified standalone scancodes.
-        """
         if n not in FKEY_SCANCODES:
             raise ValueError(f"Unsupported function key: F{n}")
 
@@ -402,13 +397,10 @@ class PCjrEmulator(PCjrIRSender):
         delay_after_enter: int = seconds
         delay_between_codes: int = micro seconds
         """
-        # The wave builder will append delay_between_codes at the end of the sequence
         original_frame_gap_us = self.frame_gap_us
-        self.frame_gap_us = delay_between_codes 
-
+        self.frame_gap_us = delay_between_codes
 
         test_frames = self.build_frame(code) + self.build_frame(code)
-        # Reset delay
         self.frame_gap_us = original_frame_gap_us
 
         self.send_char('\n')
@@ -416,8 +408,94 @@ class PCjrEmulator(PCjrIRSender):
         self.send_wave(test_frames)
 
 
+# ----------------------------------------------------------------------
+# Probe battery — drop-in testing harness.
+# ----------------------------------------------------------------------
+def parse_trial_spec(text):
+    """Parse 'label, lead_us, on,off, on,off, ...' into (label, lead, pairs)."""
+    fields = [x.strip() for x in text.strip().split(",")]
+    if len(fields) < 4 or len(fields) % 2 != 0:
+        raise ValueError(f"bad trial spec (label,lead,on,off[,on,off...]): {text!r}")
+    label = fields[0]
+    lead_us = int(fields[1])
+    pairs = [(int(fields[i]), int(fields[i + 1])) for i in range(2, len(fields), 2)]
+    return label, lead_us, pairs
 
 
+def load_trials(path):
+    """Read trial specs from a file. '#' starts a comment; blank lines skipped."""
+    trials = []
+    with open(path) as fh:
+        for line in fh:
+            spec = line.split("#", 1)[0].strip()
+            if spec:
+                trials.append(parse_trial_spec(spec))
+    return trials
+
+
+def interactive_trials():
+    """Prompt for trial specs until a blank line."""
+    print("[harness] trial format: label, lead_us, on,off, on,off, ...", flush=True)
+    print("[harness] blank line finishes input.", flush=True)
+    trials = []
+    while True:
+        spec = input("trial> ").strip()
+        if not spec:
+            break
+        trials.append(parse_trial_spec(spec))
+    return trials
+
+
+class PCjrTestHarness(PCjrEmulator):
+    """Prime once per battery, then one wave per BASIC INPUT release."""
+
+    def __init__(self, post_run_wait_s=3.0):
+        super().__init__(chars_per_sec=60)
+        self.post_run_wait_s = post_run_wait_s
+
+    def _send_line(self, text):
+        for ch in text:
+            self.send_char(ch)
+
+    def run_battery(self, trials, arm_delay_s=0.4, cls_wait_s=1.0, run_wait_s=2.0):
+        print("[harness] send: cls", flush=True)
+        self._send_line("cls\n")
+        time.sleep(cls_wait_s)
+
+        for label, lead_us, pairs in trials:
+            print(
+                f"[harness] {label}: run -> enter -> arm {arm_delay_s}s -> "
+                f"lead={lead_us}us pairs={pairs}",
+                flush=True,
+            )
+            self._send_line("run\n")
+            time.sleep(run_wait_s)
+            self._send_line("\n")  # release BASIC INPUT
+            time.sleep(arm_delay_s)
+            self.send_wave(self.build_probe_wave(lead_us, pairs))
+            time.sleep(self.post_run_wait_s)
+            print(f"[harness] {label}: done", flush=True)
+
+    def run_suite(self, trials, battery_size=4, arm_delay_s=0.4):
+        n_batches = (len(trials) + battery_size - 1) // battery_size
+        for b, i in enumerate(range(0, len(trials), battery_size), 1):
+            batch = trials[i:i + battery_size]
+            print(
+                f"[harness] battery {b}/{n_batches} "
+                f"(slots={battery_size}, trials={len(batch)}): "
+                f"{[t[0] for t in batch]}",
+                flush=True,
+            )
+            self.run_battery(batch, arm_delay_s=arm_delay_s)
+            if b < n_batches:
+                input(f"[harness] transcribed battery {b}? press Enter for next battery... ")
+            else:
+                print("[harness] suite complete", flush=True)
+
+
+# ----------------------------------------------------------------------
+# stdin passthrough
+# ----------------------------------------------------------------------
 import select
 import sys
 import termios
@@ -425,7 +503,6 @@ import tty
 
 
 def _read_escape_sequence(fd):
-    """Read an ANSI escape sequence starting with ESC (already consumed)."""
     seq = b"\x1b"
     while True:
         ready, _, _ = select.select([fd], [], [], 0.5)
@@ -447,14 +524,6 @@ def _read_escape_sequence(fd):
 
 
 def stdin_passthrough(emu):
-    """Stream stdin to the PCjr.
-
-    TTY mode:
-      Ctrl+C       exit locally (does not send)
-      Ctrl+B       send PCjr Ctrl+Break (Fn+B)
-      Esc/ANSI     arrows, nav, F-keys via ESC_MAP
-      everything   sent as text with the emulator throttle
-    """
     fd = sys.stdin.fileno()
 
     if not sys.stdin.isatty():
@@ -476,20 +545,17 @@ def stdin_passthrough(emu):
             if not b:
                 break
 
-            # Local controls, never sent to the PCjr.
-            if b == b"\x03":  # Ctrl+C: exit passthrough
+            if b == b"\x03":
                 break
-            if b == b"\x02":  # Ctrl+B: PCjr Ctrl+Break
+            if b == b"\x02":
                 emu.send_ctrl_break()
                 continue
 
-            # ANSI escape sequence: arrows, nav, F1-F12.
             if b == b"\x1b":
                 seq = _read_escape_sequence(fd)
                 try:
                     emu.send_ansi_escape(seq)
                 except KeyError:
-                    # Bare Esc or unknown sequence. Bare Esc is mapped in SCAN.
                     if seq == b"\x1b":
                         emu.send_char("\x1b")
                 continue
@@ -520,9 +586,55 @@ def main():
         "--stdin", action="store_true", help="stream stdin to the PCjr interactively"
     )
     group.add_argument("--fkey", type=int, help="send F1-F12 (1-12)")
-    group.add_argument("--run_test", action="store_true", help="Runs hardcoded test frames")
+    group.add_argument(
+        "--run_test",
+        nargs="?",
+        const="__interactive__",
+        metavar="FILE",
+        help="probe battery: FILE, interactive if bare, --spec for one trial",
+    )
+
+    # Harness tunables (not part of the exclusive group).
+    parser.add_argument(
+        "--spec",
+        help="single trial spec: label,lead,on,off[,on,off...]",
+    )
+    parser.add_argument(
+        "--arm", type=float, default=0.4, help="arming delay after Enter (s)"
+    )
+    parser.add_argument(
+        "--post", type=float, default=3.0, help="post-run wait for BASIC dump (s)"
+    )
+    parser.add_argument(
+        "--battery", type=int, default=4, help="trials per RUN (must match BASIC)"
+    )
 
     args = parser.parse_args()
+
+    if args.run_test is not None:
+        harness = PCjrTestHarness(post_run_wait_s=args.post)
+        harness.connect()
+        try:
+            if args.run_test == "__interactive__":
+                trials = (
+                    [parse_trial_spec(args.spec)]
+                    if args.spec
+                    else interactive_trials()
+                )
+            else:
+                trials = load_trials(args.run_test)
+
+            if not trials:
+                raise SystemExit("no trials loaded")
+
+            harness.run_suite(
+                trials,
+                battery_size=args.battery,
+                arm_delay_s=args.arm,
+            )
+        finally:
+            harness.close()
+        return
 
     emu = PCjrEmulator(chars_per_sec=60)
     emu.connect()
@@ -534,8 +646,6 @@ def main():
             if len(args.char) != 1:
                 raise SystemExit("--char expects exactly one character")
             emu.send_char(args.char)
-        elif args.run_test:
-            emu.testing_macro(0x23, 0.5, 1500)
         elif args.scan is not None:
             emu.send_key_press(int(args.scan, 16))
         elif args.escape is not None:
