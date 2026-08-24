@@ -222,3 +222,125 @@ per-event encoding, cooperative CH0 decoder. Decoder was replaceable but
 non-binding; transmitter was the immutable floor; PyCJr is the first
 owner of both ends.
 
+## 2026-08-24 · agc_h_response_two_regime · empirical
+Controlled Pi probe (CH0-latched PC6, 2.38636 MHz empirical clock).
+H = high envelope after a 40 kHz carrier burst of width W, S=5000 us:
+- W 25/40/62/125 us : H = 550 ct = 230 us (floor)
+- W = 250 us       : H = 1126 / 1052 ct = 472 / 441 us
+- W = 500 us       : H = 1702 ct = 713 us (~W + 210 us)
+Transition width W_c between 125 and 250 us. Refutes both
+"constant stretch" and "H = W" models.
+
+## 2026-08-24 · agc_l_two_regime_offset_floor · empirical
+L = measured low between two W=62 us bursts, vs programmed silence S:
+- S = 220 us  : L = 188 ct = 79 us (floor dominates)
+- S = 440 us  : L = 620 ct = 260 us (~S - 180 us)
+- S = 1500 us : L = 3142 ct = 1317 us (~S - 183 us)
+- S = 5000 us : L = 11420-11636 ct = 4786-4876 us (~S - 124..215 us)
+Model: L = max(S - ~180 us, ~79 us). The 79 us floor matches the
+repo two-run min-L 190 ct = 79.6 us. Offset is W-independent
+(S=5000 flat across the W sweep); no conservation violation.
+
+## 2026-08-24 · agc_w250_h_asymmetry · empirical
+W=250 pair at S=5000: H1=1126 ct (472 us) vs H2=1052 ct (441 us),
+a 31 us gap at identical stimulus. W=500 pair is symmetric
+(1702/1702). Magnitude-dependent recovery suspected; unverified.
+Single datapoint that breaks the clean two-regime model.
+
+## 2026-08-24 · demod_stretcher_model · analysis
+Unified model from the H and L regimes:
+- min output high ~230 us (floor)
+- high extension ~200 us beyond W for W >= ~250 us
+- low release delay ~180 us
+- min output low ~79 us
+Consistent with a minimum-pulse-width pulse-stretching demod stage.
+The L release delay is independent of W.
+
+## 2026-08-24 · agc_merge_threshold · empirical
+Burst-pair W=62 us edge count vs silence S:
+- S = 220 us : ed=4, L=188 ct = 79 us, H2/H1 = 478/550 = 0.87
+- S = 157 us : ed=2 (merged)
+- S = 80 us  : ed=2 (merged)
+- S = 40 us  : ed=2 (merged)
+Merge threshold between 157 and 220 us. ed=2 trials produced no dump
+(ed>=3 gate); merged-high width unmeasured this scope.
+
+## 2026-08-24 · agc_recovery_threshold · empirical
+H2/H1 amplitude ratio: 0.87 at S=220 us, 1.0 at S=440 us.
+Full amplitude recovery between 220 and 440 us (assumed monotonic;
+the in-between curve is unverified).
+
+## 2026-08-24 · agc_probe_repeatability · empirical
+Two independent runs of the same 62/5000 pair: H 550/548 vs 550/550
+and L 11566 vs 11564. Short-term repeatability <=2 ct (~0.8 us) on
+both H and L.
+
+## 2026-08-24 · agc_duty_insensitive_8train · empirical
+8-burst 50% train (W=62/S=440 us, ~3.5 ms): H flat 548-550 ct
+(~230 us) across all eight, no tail sag. L 620-694 ct (260-291 us),
+within poll quantization. Duty-insensitive over the tested horizon.
+
+## 2026-08-24 · biphase_agc_duty_weakened · analysis
+8-cell 50% train H equals sparse-pair H. AGC envelope is not
+duty-sensitive over ~3.5 ms, weakening the biphase-as-AGC
+duty-balance hypothesis. Not refuted over the full 11-bit frame
+(~4.8 ms). Do not drop biphase without an N=12 train.
+Extends biphase_agc_hypothesis; does not supersede it.
+
+## 2026-08-24 · stock_zero_silences_map · analysis
+Measured thresholds map onto stock emitter silences:
+- zero_silence_1 = 220 us : at recovery floor, second burst attenuated.
+- zero_silence_2 = 157 us : below merge threshold, bursts fuse.
+- start_silence = 310 us : below observed full recovery (440 us), so
+  stock traffic never reaches a fully recovered second burst (assuming
+  monotonic recovery in 220-440 us). Amplitude is never a reliable
+  stock signal; timing only.
+This is the empirical root of the 38-vs-40 edge count and the 1450 ct
+manual-press merge candidate. Stock decode survives because KBDNMI is
+sample-based, not edge-based (entry 93).
+
+## 2026-08-24 · gap2_1126_controlled_repro · empirical
+W=250 controlled run produced H=1126 ct, matching the frozen
+gap2_1126. A merged zero-silence pair presents ~250 us effective
+stimulus and yields the same H. Extends gap2_1126; does not supersede.
+
+## 2026-08-24 · decode_floor_mechanism · analysis
+Repo custom decode floor 596 ct (~250 us) = min-H 406 ct + min-L
+190 ct from two-run traffic. Controlled probe confirms the L component
+(79 us floor). Isolated H floor is 230 us but in-traffic H compresses
+(S=220: 200 us; repo min: 170 us) under recovery attenuation. The
+170 us in-traffic minimum remains to be pinned; mechanism partial.
+
+## 2026-08-24 · edge_completeness_not_decode_criterion · analysis
+KBDNMI decodes by fixed-offset sampling (entry 93: wait 310 us, then
+sample every 220 us half-bit, 5-sample majority), not edge
+reconstruction. A manual press captured ed=34 and still decoded 'h'.
+Edge count is a capture artifact, not a decode requirement.
+
+## 2026-08-24 · ir_receiver_board_geometry · manual-verified
+Entry 92: receiver card 57.15 x 63 mm, separate board, component-side
+down, two snap-in standoffs, 8-pin rear connector, front photodiode
+aperture, on-board diagnostic IR transmitter. Signal chain: photodiode
+-> first amp -> second amp w/AGC -> demodulator -> BO3 I.R. KBD DATA.
+
+## 2026-08-24 · ir_receiver_connector_pinout · manual-verified
+Entry 93, 8 pins: A01 12V in, A02 GND, A03 GND shield,
+A04 I.R. TEST FREQ in, B01 GND, B02 5V in, B03 I.R. KBD DATA out,
+B04 GND.
+
+## 2026-08-24 · ir_receiver_app_notes_truncated · conflict
+Digitized manual page 2-98 cuts the application-notes sentence
+mid-text. No manufacturer or part number anywhere in the strip.
+Datasheet lookup impossible from the manual alone.
+
+## 2026-08-24 · agc_profile_probe_decision · decision
+No part-number datasheet exists in the manual; AGC profile must come
+from hardware probing. Physical inspection fallback: the receiver is a
+separate board, so its part number can be read visually if the probe
+proves insufficient.
+
+## 2026-08-24 · envshape_skill_dollar_drop · conflict
+BDS ENVSHAPE anchor listing dropped $ on x$/h$/l$/hx$ and mangled
+continuation lines (x="", h="", l=""). Under defint a-z these throw
+"Type mismatch" at line 30. Corrected in BDS runtime cache; the repo
+skill listing must get the same fix to survive a cache rebuild.

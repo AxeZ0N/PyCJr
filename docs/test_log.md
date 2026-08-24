@@ -107,3 +107,33 @@ regression: not applicable
   "verdict": "PASS",
   "recovery": "cold_power_cycle"
 }
+## 2026-08-24 · AGCPROBE · result
+{
+  "id": "AGCPROBE",
+  "source": "AGCPROBE.BAS + pycjr harness",
+  "stimulus": "custom probe waves: burst-pair (W,S,W,S) and 8-burst train",
+  "clock": "CH0 2.38636 MHz empirical",
+  "keyboard_after": "intact (all runs)",
+  "runs": [
+    {"label":"G1_iso","spec":"62,5000,62,5000","ed":4,"H":[550,548],"L":[11566]},
+    {"label":"G2_w25","spec":"25,5000,25,5000","ed":4,"H":[550,550],"L":[11420]},
+    {"label":"G2_w40","spec":"40,5000,40,5000","ed":4,"H":[550,550],"L":[11420]},
+    {"label":"G2_w62","spec":"62,5000,62,5000","ed":4,"H":[550,550],"L":[11564]},
+    {"label":"G2_w125","spec":"125,5000,125,5000","ed":4,"H":[550,550],"L":[11636]},
+    {"label":"G2_w250","spec":"250,5000,250,5000","ed":4,"H":[1126,1052],"L":[11422]},
+    {"label":"G2_w500","spec":"500,5000,500,5000","ed":4,"H":[1702,1702],"L":[11420]},
+    {"label":"G3_s1500","spec":"62,1500,62,1500","ed":4,"H":[550,548],"L":[3142]},
+    {"label":"G3_s440","spec":"62,440,62,440","ed":4,"H":[550,550],"L":[620]},
+    {"label":"G3_s220","spec":"62,220,62,220","ed":4,"H":[550,478],"L":[188]},
+    {"label":"G3_s157","spec":"62,157,62,157","ed":2,"H":[],"L":[]},
+    {"label":"G3_s80","spec":"62,80,62,80","ed":2,"H":[],"L":[]},
+    {"label":"G3_s40","spec":"62,40,62,40","ed":2,"H":[],"L":[]},
+    {"label":"G4_train","spec":"8x(62,440)","ed":16,"H":[550,550,548,550,550,548,550,550],"L":[620,694,694,620,694,622,620]}
+  ],
+  "notes": [
+    "Battery-2 transcription header 'ed=5' was a slip; every line in that block carries 3 deltas = ed 4. Analyzed as ed=4.",
+    "Pre-suite sanity run '2000,62,375' gave st=1 ed=2 it=61440, no H/L dump; single burst correctly blocked by the ed>=3 gate.",
+    "Manual h-press (pre-suite): st=1 ed=34 in=0 it=61440, h decoded, H contains single 1450 ct (607 us) merge candidate; the first 55 ct value was a transcription error, corrected away.",
+    "ed>=3 dump gate discarded merged-high width on S=157/80/40; next probe needs ed>=2 dump."
+  ]
+}
