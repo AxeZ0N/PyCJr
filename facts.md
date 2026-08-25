@@ -679,3 +679,24 @@ The AGC analog phase is closed. Four directions exhausted: cell shrink
 granularity was never the limit), modulation alternatives (all dead).
 Remaining throughput is framing + CPU hostage. Next scope: custom
 deserializer (replace KBDNMI).
+## 2026-08-25 · debug_asm_v5_decode · manual-verified
+
+`debug_asm` v5 decode fixes the `C6` byte-stream desync: `C6 46 D8 07` was
+decoded as four single-byte `db` entries; it now decodes as one 4-byte
+`mov [bp+0xD8],0x07`. Root cause: `C6` was outside the verified subset and
+fell to the 1-byte `db` fallback.
+
+## 2026-08-25 · debug_asm_v5_opcodes · manual-verified
+
+Added decode coverage: `iret` (CF), `dec r16` (48-4F), `push r16` (50-57),
+`pop r16` (58-5F), moffs `mov ax,[abs]`/`mov [abs],ax` (A1/A3),
+`mov r16,r/m16` (8B), `mov r/m8,imm8` (C6). `55`/`5D` moved from OP1 into
+the push/pop ranges; IRPING decode_31 count unchanged.
+
+## 2026-08-25 · debug_asm_v5_robustness · manual-verified
+
+`decode`/`_modrm` are length-safe via `_need`; truncated trailing
+instructions render `db ; truncated` instead of raising IndexError.
+`branch_checks` is OOB-safe. Hex input accepts whitespace and optional
+`0x` via `ASM._hex_or_error` (server routes through it). Selftest: 50
+gates, ALL_PASS True. No hardware run this session.
