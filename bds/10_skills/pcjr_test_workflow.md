@@ -126,18 +126,19 @@ value without the tag.
 
 Server: `pcjr-tools`. Single tool, `command` dispatch:
 
-| Command ↕▾ ↕▾ | Args ↕▾ ↕▾ |
+| Command ↕▾ ↕▾ ↕▾ | Args ↕▾ ↕▾ ↕▾ |
 |---|---|
-| −−selftest | mode="all" (after server restart) |
-| −−parse | text |
-| −−emit | hex_bytes |
-| −−decode | hex_bytes |
-| −−patch | hex_bytes, patches=[{offset,value}] |
-| −−check | hex_bytes, expected_hex |
-| −−branch | hex_bytes, checks=[{at,target}] |
-| −−rel8 | insn, target |
-| −−rel16 | insn, target |
-| −−selfloc | pop_offset, base=128 |
+| −−−selftest | mode="all" (after server restart) |
+| −−−parse | text |
+| −−−emit | hex_bytes |
+| −−−decode | hex_bytes |
+| −−−patch | hex_bytes, patches=[{offset,value}] |
+| −−−check | hex_bytes, expected_hex |
+| −−−branch | hex_bytes, checks=[{at,target}] |
+| −−−rel8 | insn, target |
+| −−−rel16 | insn, target |
+| −−−selfloc | pop_offset, base=128 |
+| −−⚙ |  |
 | −⚙ |  |
 ⚙
 
@@ -156,6 +157,11 @@ confirmed by `debug_asm selfloc` + `debug_asm rel8`/`rel16` +
 `debug_asm branch` + `debug_asm decode` BEFORE the DATA block is emitted.
 Hand-rolling a rel8 displacement is a process violation. The tool is the
 construction source of truth, not a post-hoc checker.
+
+The gate proves byte construction and branch displacements. It does
+not prove hardware safety: S1 v2 passed selfloc, 3/3 branch checks,
+and a clean decode, then rebooted the PCjr into BIOS on the first
+NMI. Hardware behavior remains a separate stage gate.
 
 ## Test Contract (mandatory)
 
@@ -176,14 +182,15 @@ expectations into a timer, video, or sound routine.
 
 ## Stage Gate (mandatory)
 
-| Stage ↕▾ ↕▾ | New risk ↕▾ ↕▾ | Pass condition ↕▾ ↕▾ |
+| Stage ↕▾ ↕▾ ↕▾ | New risk ↕▾ ↕▾ ↕▾ | Pass condition ↕▾ ↕▾ ↕▾ |
 |---|---|---|
-| −−1 Bridge stub | PUSH CS / POP DS / RETF | Returns RETURNED OK |
-| −−2 Self-location | call get_ip / pop bp | Writes a known byte at O+128 |
-| −−3 Result stores | Explicit stores O+128/130/132 | BASIC reads expected values |
-| −−4 IN from target port | Port access | Status changes as documented |
-| −−5 Polling loop | Edge counters | Edges observed on stimulus |
-| −−6 Full capture | Complete routine | All contract fields match |
+| −−−1 Bridge stub | PUSH CS / POP DS / RETF | Returns RETURNED OK |
+| −−−2 Self-location | call get_ip / pop bp | Writes a known byte at O+128 |
+| −−−3 Result stores | Explicit stores O+128/130/132 | BASIC reads expected values |
+| −−−4 IN from target port | Port access | Status changes as documented |
+| −−−5 Polling loop | Edge counters | Edges observed on stimulus |
+| −−−6 Full capture | Complete routine | All contract fields match |
+| −−⚙ |  |  |
 | −⚙ |  |  |
 ⚙
 

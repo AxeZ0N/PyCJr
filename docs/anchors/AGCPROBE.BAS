@@ -38,8 +38,8 @@
 272 h$=h$+str$(int(g!))+" "
 290 t!=u!
 300 next j
-310 print "st=";st;" ed=";ed;" in=";in0;" it=";it!;
-320 print "H:";h$;" L:";l$
+310 print "st=";st;" ed=";ed;" in=";in0;" it=";it!
+320 print "H:";h$; "L:";l$
 400 end
 1000 data &h0e,&h1f,&h55,&he8,&h00,&h00,&h5d,&h8d,&hae,&h7a,&h00
 1010 data &h55,&h31,&hc0,&he6,&ha0,&he4,&ha0,&h31,&hc0,&h88,&h46

@@ -176,13 +176,13 @@ def debug_asm(
         if command == "emit":
             if hex_bytes is None:
                 return "ERROR: command=emit requires 'hex_bytes'"
-            data = list(bytes.fromhex(hex_bytes))
+            data = ASM._hex_or_error(hex_bytes)
             return ASM.emit(data, wrap=wrap)
 
         if command == "decode":
             if hex_bytes is None:
                 return "ERROR: command=decode requires 'hex_bytes'"
-            data = list(bytes.fromhex(hex_bytes))
+            data = ASM._hex_or_error(hex_bytes)
             out = []
             for off, ln, text_ in ASM.decode(data):
                 hx = "".join(f"{b:02X}" for b in data[off:off + ln])
@@ -192,16 +192,16 @@ def debug_asm(
         if command == "patch":
             if hex_bytes is None or patches is None:
                 return "ERROR: command=patch requires 'hex_bytes' and 'patches'"
-            data = list(bytes.fromhex(hex_bytes))
+            data = ASM._hex_or_error(hex_bytes)
             patch_list = [(p.offset, p.value) for p in patches]
             return ASM.emit(ASM.patch(data, patch_list))
 
         if command == "check":
             if hex_bytes is None:
                 return "ERROR: command=check requires 'hex_bytes'"
-            actual = list(bytes.fromhex(hex_bytes))
+            actual = ASM._hex_or_error(hex_bytes)
             expected = (
-                list(bytes.fromhex(expected_hex))
+                ASM._hex_or_error(expected_hex)
                 if expected_hex
                 else list(bytes.fromhex(ASM.GOLDEN_HEX))
             )
@@ -210,7 +210,7 @@ def debug_asm(
         if command == "branch":
             if hex_bytes is None or checks is None:
                 return "ERROR: command=branch requires 'hex_bytes' and 'checks'"
-            data = list(bytes.fromhex(hex_bytes))
+            data = ASM._hex_or_error(hex_bytes)
             check_list = [(c.at, c.target) for c in checks]
             return json.dumps(ASM.branch_checks(data, check_list), indent=2)
 

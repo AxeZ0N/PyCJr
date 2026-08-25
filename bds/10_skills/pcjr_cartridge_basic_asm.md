@@ -64,6 +64,11 @@ CALL O           ' far call
 The called machine routine MUST:
 
 - start with `PUSH CS` / `POP DS`
+- preserve BP: `PUSH BP` at entry (after `POP DS`), `POP BP`
+immediately before `RETF`. Clobbering BP corrupts the Cartridge
+BASIC interpreter frame and yields `Division by zero in (blank)`
+with a dead keyboard — unrecoverable, cold power-cycle only.
+(empirical, 2026-08-25, S1 v1)
 - end with far `RETF` (opcode `0CBh`)
 
 Never emit `CALL ABSOLUTE` (it evaluates to 0 in Cartridge BASIC and
@@ -107,6 +112,11 @@ Never use a manual byte-count loader. A wrong count omits the final
 1010 DATA -1
 ```
 
+Canonical harness: docs/anchors/BASLOAD.BAS (no machine code, no
+DATA lines; append a program's DATA at 1000+). Gate every run on the
+printed `loaded N bytes` count; it discriminates DATA blocks. Size
+the array to cover code length + 128 for the result region.
+
 ## Rule 4 — Position-Independent Result Storage (Mandatory)
 
 Never store machine-code results at a hardcoded DS offset. Locate the
@@ -145,20 +155,21 @@ and `falling>0`, `status=0` or `64`.
 
 ## Rule 6 — Hardware Map with Verification Status
 
-| Register ↕▾ ↕▾ | Address ↕▾ ↕▾ | Purpose ↕▾ ↕▾ | Status ↕▾ ↕▾ |
+| Register ↕▾ ↕▾ ↕▾ | Address ↕▾ ↕▾ ↕▾ | Purpose ↕▾ ↕▾ ↕▾ | Status ↕▾ ↕▾ ↕▾ |
 |---|---|---|---|
-| −−PORT_A | 60h | 8255 Port A output | Confirmed + manual-verified |
-| −−PORT_B | 61h | 8255 Port B output | Confirmed + manual-verified |
-| −−PORT_C | 62h | 8255 Port C input | Confirmed + hardware-verified |
-| −−CMD_PORT | 63h | 8255 control | Confirmed |
-| −−TIMER0 | 40h | 8253 counter 0 (CH0). Input clock 2.38636 MHz (14.31818/6 = CPU/2), empirical | Confirmed; clock empirical |
-| −−TIMER1 | 41h | 8253 counter 1 (keyboard de-serialize; 1.1925 MHz clk when A0h D5=0) | manual-verified (entries 31/34) |
-| −TIMER2 | 42h | 8253 counter 2 (sound source; IR test 40 kHz when A0h D6=1) | manual-verified (entries 31/34) |
-| −TIM_CTL | 43h | 8253 control | Confirmed |
-| −NMI_PORT | A0h | NMI mask / control | Confirmed + manual-verified |
-| −INTA00 | 20h | 8259 PIC | Confirmed |
-| −INTA01 | 21h | 8259 PIC | Confirmed |
-| ⚙ |  |  |  |
+| −−−PORT_A | 60h | 8255 Port A output | Confirmed + manual-verified |
+| −−−PORT_B | 61h | 8255 Port B output | Confirmed + manual-verified |
+| −−−PORT_C | 62h | 8255 Port C input | Confirmed + hardware-verified |
+| −−−CMD_PORT | 63h | 8255 control | Confirmed |
+| −−−TIMER0 | 40h | 8253 counter 0 (CH0). Input clock 2.38636 MHz (14.31818/6 = CPU/2), empirical | Confirmed; clock empirical |
+| −−−TIMER1 | 41h | 8253 counter 1 (keyboard de-serialize; 1.1925 MHz clk when A0h D5=0) | manual-verified (entries 31/34) |
+| −−TIMER2 | 42h | 8253 counter 2 (sound source; IR test 40 kHz when A0h D6=1) | manual-verified (entries 31/34) |
+| −−TIM_CTL | 43h | 8253 control | Confirmed |
+| −−NMI_PORT | A0h | NMI mask / control | Confirmed + manual-verified |
+| −−INTA00 | 20h | 8259 PIC | Confirmed |
+| −−INTA01 | 21h | 8259 PIC | Confirmed |
+| −⚙ |  |  |  |
+| −⚙ |  |  |  |
 ⚙
 
 Note: empirical values above are last-known. Session-fresh readings live
@@ -238,6 +249,13 @@ Manual-derived + empirical (STAGE5 restore 80h, keyboard fine after).
 - A0h D5: 0 = 1.1925 MHz clk to timer 1 (keyboard de-serialization);
 1 = timer 0 output as clk to timer 1 (time-of-day overflow catch
 during masked diskette ops). manual-verified (entry 34).
+- IRET (CF) is architecturally the only correct NMI-return primitive:
+RETF leaves FLAGS on the stack and corrupts the caller
+(manual-verified, BIOS KBDNMI entry 338 ends IN AL,A0h then IRET).
+Empirically, no CALL O bridge program using IRET has yet passed
+hardware; S1 v2 rebooted into BIOS with cause undiagnosed. IRET
+stays `unverified` in the bridge until the per-instruction ladder
+anchors it.
 
 ## Rule 8 — IR Protocol Frozen Facts
 
@@ -347,6 +365,7 @@ Anchor ground truth lives in `docs/anchors/`, never in this skill.
 - ENVSHAPE.BAS  -> docs/anchors/ENVSHAPE.BAS   (frozen BASIC runner)
 - CH0CAL.ASM    -> docs/anchors/CH0CAL.ASM     (design logic)
 - AGCPROBE.BAS  -> docs/anchors/AGCPROBE.BAS   (probe capture variant)
+- BASLOAD.BAS   -> docs/anchors/BASLOAD.BAS    (generic harness, no data lines)
 
 Agreement rule: DATA blocks in `.BAS` must byte-match the corresponding
 `.ASM`. Regenerate via `debug_asm`, never hand-roll.

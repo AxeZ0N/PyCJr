@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PCjr 8088 byte workbench (v4 refactor).
+"""PCjr 8088 byte workbench (v5).
 
 Pure stdlib. Holds the verified pure functions used to construct and
 check Cartridge BASIC machine-code images for the IBM PCjr. The MCP
@@ -7,6 +7,10 @@ server imports this module; the CLI remains for local verification.
 
 Run the stage gates after a server restart:
     python3 pcjr_asm_debug.py selftest
+
+v5: handler-opcode coverage (iret, dec r16, push/pop r16, moffs A1/A3,
+mov r16,r/m16 8B, mov r/m8,imm8 C6), length-safe decode, tolerant hex
+input, and OOB-safe branch checks.
 """
 import json
 import re
@@ -148,10 +152,10 @@ REGS16 = ["ax", "cx", "dx", "bx", "sp", "bp", "si", "di"]
 REG8 = ["al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"]
 EA0 = ["[bx+si]", "[bx+di]", "[bp+si]", "[bp+di]", "[si]", "[di]", None, "[bx]"]
 
-OP1 = {0x0E: "push cs", 0x1F: "pop ds", 0x55: "push bp", 0x5D: "pop bp",
-       0xEC: "in al,dx", 0xCB: "retf"}
+OP1 = {0x0E: "push cs", 0x1F: "pop ds", 0xEC: "in al,dx",
+       0xCB: "retf", 0xCF: "iret"}
 
-REL8 = {0x74: "je", 0x75: "jne", 0xEB: "jmp", 0xE2: "loop"}
+REL8 = {0x74: "je", 0x75: "jne", 0x74: "je", 0xEB: "jmp", 0xE2: "loop"}
 
 IMM8 = {0x24: "and al,0x%02X", 0xB4: "mov ah,0x%02X",
         0xE4: "in al,0x%02X", 0xE6: "out 0x%02X,al",
@@ -161,8 +165,9 @@ IMM16 = {0xBA: "mov dx,0x%04X", 0xB9: "mov cx,0x%04X"}
 
 MNEMO = {0x89: "mov", 0x31: "xor", 0x39: "cmp", 0x85: "test"}
 
-MNEMO8_RM_REG = {0x88: "mov"}   # MOV r/m8, r8
-MNEMO8_REG_RM = {0x3A: "cmp"}   # CMP r8, r/m8
+MNEMO16_REG_RM = {0x8B: "mov"}   # MOV r16, r/m16 (reg = destination)
+MNEMO8_RM_REG = {0x88: "mov"}    # MOV r/m8, r8
+MNEMO8_REG_RM = {0x3A: "cmp"}    # CMP r8, r/m8
 
 def _s8(v):
     return v - 256 if v >= 128 else v
@@ -173,8 +178,16 @@ def _s16(v):
 def _u16(lo, hi):
     return lo | (hi << 8)
 
+def _need(data, off, n):
+    """True when n bytes remain starting at offset off."""
+    return off + n <= len(data)
+
 def decode(data):
-    """byte list -> [(offset, length, text)] for the verified subset."""
+    """byte list -> [(offset, length, text)] for the verified subset.
+
+    Unknown opcodes fall back to a 1-byte `db` so the stream stays
+    aligned. Truncated trailing instructions are marked, never raised.
+    """
     out, off, n = [], 0, len(data)
     while off < n:
         b = data[off]
@@ -185,25 +198,63 @@ def decode(data):
         elif 0x40 <= b <= 0x47:
             off += 1
             text = f"inc {REGS16[b - 0x40]}"
+        elif 0x48 <= b <= 0x4F:
+            off += 1
+            text = f"dec {REGS16[b - 0x48]}"
+        elif 0x50 <= b <= 0x57:
+            off += 1
+            text = f"push {REGS16[b - 0x50]}"
+        elif 0x58 <= b <= 0x5F:
+            off += 1
+            text = f"pop {REGS16[b - 0x58]}"
+        elif b in (0xA1, 0xA3):
+            if not _need(data, off, 3):
+                text = f"db 0x{b:02X} ; truncated (need 3)"
+                off += 1
+            else:
+                imm = _u16(data[off + 1], data[off + 2])
+                off += 3
+                text = (f"mov ax,[0x{imm:04X}]" if b == 0xA1
+                        else f"mov [0x{imm:04X}],ax")
         elif b in REL8:
-            text = f"{REL8[b]} 0x{(off + 2 + _s8(data[off + 1])) & 0xFFFF:04X}"
-            off += 2
+            if not _need(data, off, 2):
+                text = f"db 0x{b:02X} ; truncated (need 2)"
+                off += 1
+            else:
+                text = f"{REL8[b]} 0x{(off + 2 + _s8(data[off + 1])) & 0xFFFF:04X}"
+                off += 2
         elif b == 0xE8:
-            next_ip = off + 3
-            target = (next_ip + _s16(_u16(data[off + 1], data[off + 2]))) & 0xFFFF
-            text = f"call 0x{target:04X}"
-            off += 3
+            if not _need(data, off, 3):
+                text = f"db 0x{b:02X} ; truncated (need 3)"
+                off += 1
+            else:
+                next_ip = off + 3
+                target = (next_ip + _s16(_u16(data[off + 1], data[off + 2]))) & 0xFFFF
+                text = f"call 0x{target:04X}"
+                off += 3
         elif b in IMM8:
-            text = IMM8[b] % data[off + 1]
-            off += 2
+            if not _need(data, off, 2):
+                text = f"db 0x{b:02X} ; truncated (need 2)"
+                off += 1
+            else:
+                text = IMM8[b] % data[off + 1]
+                off += 2
         elif b in IMM16:
-            text = IMM16[b] % _u16(data[off + 1], data[off + 2])
-            off += 3
+            if not _need(data, off, 3):
+                text = f"db 0x{b:02X} ; truncated (need 3)"
+                off += 1
+            else:
+                text = IMM16[b] % _u16(data[off + 1], data[off + 2])
+                off += 3
         elif 0xB8 <= b <= 0xBF:
-            imm = _u16(data[off + 1], data[off + 2])
-            off += 3
-            text = f"mov {REGS16[b - 0xB8]},0x{imm:04X}"
-        elif b == 0x8D or b in MNEMO or b in (0x88, 0x3A, 0x80):
+            if not _need(data, off, 3):
+                text = f"db 0x{b:02X} ; truncated (need 3)"
+                off += 1
+            else:
+                imm = _u16(data[off + 1], data[off + 2])
+                off += 3
+                text = f"mov {REGS16[b - 0xB8]},0x{imm:04X}"
+        elif b == 0x8D or b in MNEMO or b in (0x88, 0x3A, 0x80, 0x8B, 0xC6):
             off, text = _modrm(data, off)
         else:
             text = f"db 0x{b:02X} ; outside verified subset"
@@ -213,6 +264,8 @@ def decode(data):
 
 def _modrm(data, off):
     opcode = data[off]
+    if not _need(data, off, 2):
+        return off + 1, f"db 0x{opcode:02X} ; truncated (need modrm)"
     m = data[off + 1]
     mod, reg, rm = (m >> 6) & 3, (m >> 3) & 7, m & 7
     p = off + 2
@@ -223,17 +276,23 @@ def _modrm(data, off):
         mem = ""
     elif mod == 0:
         if rm == 6:
+            if not _need(data, p, 2):
+                return off + 1, f"db 0x{opcode:02X} ; truncated (need disp16)"
             disp = _u16(data[p], data[p + 1])
             p = off + 4
             mem = f"[0x{disp:04X}]"
         else:
             mem = EA0[rm]
     elif mod == 1:
+        if not _need(data, p, 1):
+            return off + 1, f"db 0x{opcode:02X} ; truncated (need disp8)"
         disp = data[p]
         p = off + 3
         base = EA0[rm]
         mem = f"[bp+0x{disp:02X}]" if rm == 6 else f"{base}+0x{disp:02X}"
     else:
+        if not _need(data, p, 2):
+            return off + 1, f"db 0x{opcode:02X} ; truncated (need disp16)"
         disp = _u16(data[p], data[p + 1])
         p = off + 4
         base = EA0[rm]
@@ -248,29 +307,59 @@ def _modrm(data, off):
         return p, f"lea {REGS16[reg]},{mem}"
     if opcode in MNEMO:
         return p, f"{MNEMO[opcode]} {rm_oper(False)},{REGS16[reg]}"
+    if opcode in MNEMO16_REG_RM:
+        return p, f"{MNEMO16_REG_RM[opcode]} {REGS16[reg]},{rm_oper(False)}"
     if opcode in MNEMO8_RM_REG:
         return p, f"{MNEMO8_RM_REG[opcode]} {rm_oper(True)},{REG8[reg]}"
     if opcode in MNEMO8_REG_RM:
         return p, f"{MNEMO8_REG_RM[opcode]} {REG8[reg]},{rm_oper(True)}"
     if opcode == 0x80:
+        if not _need(data, p, 1):
+            return off + 1, "db 0x80 ; truncated (need imm8)"
+        imm = data[p]
+        p += 1
         if reg == 7:
-            imm = data[p]
-            p += 1
             return p, f"cmp {rm_oper(True)},0x{imm:02X}"
         # Unsupported group /N: consume imm8 so the stream stays aligned.
-        p += 1
         return p, f"db 0x80 ; group /{reg} unsupported"
+    if opcode == 0xC6:
+        if not _need(data, p, 1):
+            return off + 1, "db 0xC6 ; truncated (need imm8)"
+        imm = data[p]
+        p += 1
+        if reg == 0:
+            return p, f"mov {rm_oper(True)},0x{imm:02X}"
+        # Unsupported group /N: consume imm8 so the stream stays aligned.
+        return p, f"db 0xC6 ; group /{reg} unsupported"
     return p, f"db 0x{opcode:02X} ; outside verified subset"
 
 def branch_checks(data, checks):
     """Verify (insn_addr, target) pairs against decoded displacements."""
     reports = []
     for at, target in checks:
+        if not (0 <= at < len(data)):
+            reports.append({
+                "at": at, "target": target, "actual": None, "ok": False,
+                "error": "offset out of range",
+            })
+            continue
         b = data[at]
         if b in REL8:
+            if not _need(data, at, 2):
+                reports.append({
+                    "at": at, "target": target, "actual": None, "ok": False,
+                    "error": "truncated branch",
+                })
+                continue
             rel = _s8(data[at + 1])
             actual = (at + 2 + rel) & 0xFFFF
         elif b == 0xE8:
+            if not _need(data, at, 3):
+                reports.append({
+                    "at": at, "target": target, "actual": None, "ok": False,
+                    "error": "truncated branch",
+                })
+                continue
             rel = _s16(_u16(data[at + 1], data[at + 2]))
             actual = (at + 3 + rel) & 0xFFFF
         else:
@@ -291,12 +380,13 @@ def _raises(fn, args):
         return True
 
 def selftest():
-    """All stage gates against the frozen IRPING image."""
+    """All stage gates against the frozen IRPING image plus v5 coverage."""
     g = list(bytes.fromhex(GOLDEN_HEX))
     d = parse(GOLDEN_DATA)
     e = emit(g)
     dec = decode(g)
     p = patch(g, [(0x19, 0x00), (0x1A, 0x01)])
+    c6 = decode([0xC6, 0x46, 0xD8, 0x07])
     return {
         "parse_61": len(d) == 61 and d[0] == 0x0E and d[-1] == 0xCB,
         "parse_full": d == g,
@@ -319,6 +409,23 @@ def selftest():
         "decode_80_fb_00": decode([0x80, 0xFB, 0x00])[0][2] == "cmp bl,0x00",
         "decode_b8_0100": decode([0xB8, 0x01, 0x00])[0][2] == "mov ax,0x0001",
         "decode_inc_si": decode([0x46])[0][2] == "inc si",
+        # v5 handler coverage
+        "decode_iret": decode([0xCF])[0][2] == "iret",
+        "decode_push_ax": decode([0x50])[0][2] == "push ax",
+        "decode_pop_ax": decode([0x58])[0][2] == "pop ax",
+        "decode_dec_dx": decode([0x4A])[0][2] == "dec dx",
+        "decode_push_bp": decode([0x55])[0][2] == "push bp",
+        "decode_pop_bp": decode([0x5D])[0][2] == "pop bp",
+        "decode_a1_moffs": decode([0xA1, 0x08, 0x00])[0][2] == "mov ax,[0x0008]",
+        "decode_a3_moffs": decode([0xA3, 0x08, 0x00])[0][2] == "mov [0x0008],ax",
+        "decode_8b_46_d8": decode([0x8B, 0x46, 0xD8])[0][2] == "mov ax,[bp+0xD8]",
+        # C6 desync regression: one 4-byte instruction, not four singles
+        "decode_c6_unit": (len(c6) == 1 and c6[0][1] == 4
+                           and c6[0][2] == "mov [bp+0xD8],0x07"),
+        # truncation safety: render, never raise
+        "decode_c6_truncated": "truncated" in decode([0xC6, 0x46, 0xD8])[0][2],
+        "decode_rel8_truncated": "truncated" in decode([0x74])[0][2],
+        "branch_oob_safe": branch_checks([0x74, 0x00], [(5, 0)])["ok"] is False,
         "branch_audit": branch_checks(
             list(bytes.fromhex(GOLDEN_HEX)),
             [(0x27, 0x0033), (0x2E, 0x0031), (0x33, 0x001F)],
@@ -331,18 +438,26 @@ def selftest():
         "rel_je": rel8(0x27, 0x0033) == [0x0A],
         "rel_loop": rel8(0x33, 0x001F) == [0xEA],
         "selfloc": selfloc_disp(6, 128) == [0x7A, 0x00],
-        # v4 additions
         "selfloc_full_6": selfloc_full(6, 128)["lea_hex"] == "8DAE7A00",
         "selfloc_full_result": selfloc_full(6, 128)["result_bp"] == 128,
         "check_detail_ok": check_detail(g, g)["ok"],
         "check_detail_drop": check_detail(g[:0x23] + g[0x24:], g)["first_diff"] == 0x23,
         "emit_wrap5_roundtrip": parse(emit(g, wrap=5)) == g,
         "rel8_range_err": _raises(rel8, (0, 200)),
+        # tolerant hex input
+        "hex_spaced": _hex_or_error("0E 1F") == [0x0E, 0x1F],
+        "hex_prefixed": _hex_or_error("0x0E1F") == [0x0E, 0x1F],
+        "hex_bad": _raises(_hex_or_error, ("0G",)),
     }
 
 def _hex_or_error(txt):
+    """Tolerant hex string -> byte list. Whitespace and optional 0x ok."""
     try:
-        return list(bytes.fromhex(txt))
+        s = txt.strip()
+        if s.lower().startswith("0x"):
+            s = s[2:]
+        s = re.sub(r'\s+', '', s)
+        return list(bytes.fromhex(s))
     except ValueError as exc:
         raise ValueError(f"invalid hex bytes: {exc}")
 
