@@ -561,3 +561,57 @@ Historical CH0CAL anchor reading: ed=38. Current deterministic + manual
 reading: ed=36 (warm-room). Program bytes unchanged; reading shifted.
 Anchor stands as ground truth for the program. The ed=38 expectation is
 now environmental, not contractual.
+## 2026-08-25 · densetrain_loaded_separation_floor · empirical
+
+Dense pulse train (W=62us, 12 bursts, lead=0, trailing=5000us). Under
+sustained AGC load the resolvable-silence floor rises above the isolated
+two-burst merge band (157-170us):
+
+- S=240us: clean, 24/24 edges.
+- S=230us: one fusion of 11 gaps (stochastic onset).
+- S=220us: clean in one run, severe H compression (406-478 ct).
+- S<=200us: collapse, multiple fused gaps.
+
+Safe dense design margin: inter-burst gap >= 240us.
+
+## 2026-08-25 · densetrain_h_compression · empirical
+
+Under dense load H compresses from the isolated 550 ct (~230us) floor:
+- S=240: H mixed 550/476 ct.
+- S=230: H 478 ct with fusion artifacts.
+- S=220: H oscillates 476/478 (~200us) and 406/404 (~170us).
+
+The 406 ct (~170us) in-traffic minimum is reproduced deliberately; it is
+partial-recovery attenuation, not the steady-state isolated floor.
+
+## 2026-08-25 · dense_cell_250us_retired · analysis
+
+supersedes: decode_floor_mechanism
+
+The earlier 596 ct (~250us) custom decode floor (min-H 406 + min-L 190)
+is an isolated/two-run artifact. In dense traffic the binding constraint
+is separation, not pulse width: H ~200us + separation >= 230us gives a
+dense cell of ~430us or more. The 250us cell is not achievable under
+continuous load.
+
+## 2026-08-25 · mary_gap_alphabet_retired · analysis
+
+M-ary gap encoding is dead on this data. Measured L saturates at
+190 ct (~79us) for every transmitted gap below ~S=260us, so a decoder
+sees no alphabet in the usable dense range. Above 260us the ~30us
+staircase steps would force an 8-level alphabet to span ~240us of
+dynamic range with an average gap worse than a stock one-cell. The gap
+alphabet cannot pay for itself.
+
+## 2026-08-25 · framing_only_2x · analysis
+
+With cell shrink and M-ary both refuted, the remaining gain over stock is
+framing only: drop make+break, parity, stop bit, and the 4840us IBG.
+Expected ~2x (~100-120 ch/s), same order as the current 60 ch/s
+emulator. The stock CPU hostage removal is a separate, unmeasured lever.
+
+## 2026-08-25 · periodic_recovery_gap · open item
+
+Unverified: interleave a long AGC-reset silence (>=1500us) every few
+symbols, keep inter-symbol gaps tight (180-220us) in between. Untested;
+the one remaining analog idea that could restore partial cell shrink.

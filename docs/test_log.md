@@ -224,3 +224,20 @@ verdict: FAIL vs anchor ed=38; FUNCTIONAL PASS. Classified receiver
 analog drift (closed warm room). Code/Pi/wiring exonerated. One transient
 38 after percussive, not reproducible. z2 functional sweep deferred to
 next session.
+## 2026-08-25 · DENSETRAIN · result
+
+contract: {"id":"DENSETRAIN","source":"densetrain_battery.txt",
+  "expected":{"return":"RETURNED OK","ed":"24 clean, fewer iff fusing",
+  "H":"flat ~230us, no >10% sag","L_min":"deliverable"},
+  "regression":"AGCPROBE.BAS (AGC1) + CH0CAL ASM",
+  "recovery":"cold_power_cycle"}
+
+result: st=1, kb intact. Sweep S=260..160us, 12-burst trains.
+- S=260: H 550 flat (one 620ct outlier), L 190/262 bimodal.
+- S=240: H 550/476 mixed, L 190 uniform; clean 24/24.
+- S=230: one fusion (H 1378ct merged), L 190; 22/24.
+- S=220: clean edges, H oscillates 476/478 and 406/404; L 190.
+- S<=200: collapse, multiple fusions.
+
+verdict: dense separation floor ~230-240us (stochastic onset 230,
+clean 240). H dense minimum 406ct (~170us). 250us cell refuted.
