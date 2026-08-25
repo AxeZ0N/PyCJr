@@ -700,3 +700,63 @@ instructions render `db ; truncated` instead of raising IndexError.
 `branch_checks` is OOB-safe. Hex input accepts whitespace and optional
 `0x` via `ASM._hex_or_error` (server routes through it). Selftest: 50
 gates, ALL_PASS True. No hardware run this session.
+## 2026-08-25 · basload_naming · decision
+BASLOAD adopted as the PCjr-side BASIC harness identifier (the full
+runner: scalar pre-declare + DIM A + sentinel loader + CALL O + O+128
+result map). Rule 3 "Sentinel Loader" heading is the loader-pattern
+name only and stays unchanged; no SENTINEL program name exists. The
+Pi-side `pycjr_run_test_harness` (pycjr.py --run_test) remains a
+distinct name.
+
+## 2026-08-25 · ch0cal_primary_regression · decision
+CH0CAL is the primary full-path regression for custom-deserializer
+work. IRPING is demoted to transport-only regression; its frozen DATA
+stays in platform skill Rule 5. The split is additive, not a replace-
+ment: no `supersedes:` on the IRPING fact. CH0CAL pass criterion is
+functional (h decodes, keyboard intact), not exact ed — ed=38 is
+environmental, not contractual.
+
+## 2026-08-25 · debug_asm_subset_s1 · empirical
+debug_asm verified subset extended (user tool edit) for the S1
+NMI-intercept build. Newly verified: iret CF (manual-verified, BIOS
+KBDNMI entry 338 ends IN AL,A0h then IRET), push ax 50, pop ax 58,
+mov ax,[moffs16] A1, mov [moffs16],ax A3, mov ax,[bp+d8] 8B,
+mov byte [bp+d8],imm8 C6 /0, dec dx 4A, mov dx,imm16 BA,
+mov ax,imm16 B8. Decoder bug fixed: C6 46 d8 imm8 previously emitted
+"db C6 / inc si" instead of the 4-byte instruction. mov ds,ax 8E D8
+and mov ax,cs 8C C8 deliberately NOT used; the push/pop path covers
+both with fewer novel forms.
+
+## 2026-08-25 · s1_nmi_intercept_contract · decision
+S1 contract frozen. id S1_NMI_INTERCEPT, source BASLOAD.BAS + S1.ASM,
+expected {return RETURNED OK, flag 1, status 0, keyboard_after intact},
+regression IRPING -> CH0CAL, recovery cold_power_cycle. Result map at
+O+128: [0]=flag, [2]=saved IVT offset word, [4]=saved IVT segment
+word, [6]=status (0 fired / 1 timeout). Handler installs at INT 02h
+(0000:0008) and returns via IRET. Stage ladder S0-S5 frozen in
+2026-08-25_s1_nmi_intercept_sop.md.
+
+## 2026-08-25 · s1_emission_gate_pass · empirical
+S1 110-byte image passed the emission gate. selfloc pop_offset=5
+disp=0x007B (lea bp,[bp+0x007B]); branch checks 4/4 (call 2->5,
+je 0x39->0x44, loop 0x3B->0x35, jne 0x3E->0x32); full decode clean,
+zero outside-subset fallbacks; handler at offset 0x61. Outer wait
+count BA1800 (24) flagged `; VERIFY:` for hardware calibration. No
+hardware run yet — S1 is NOT anchored.
+
+## 2026-08-25 · selfloc_pop_offset_semantics · analysis
+debug_asm selfloc `pop_offset` is the value BP holds AFTER `pop bp`
+(the offset of the next instruction byte), NOT the result target;
+`base` is the result target. S1 has no push bp, so pop bp lands at
+offset 5 and pop_offset=5. Passing 128 as pop_offset silently produced
+disp=0 — a self-consistent but wrong LEA that the gate cannot catch
+from the output alone. Always derive pop_offset from the instruction
+layout, never reuse the result offset.
+
+## 2026-08-25 · deserializer_sop_frozen · decision
+Custom-deserializer design/test SOP frozen: contract-first, retrieve
+before emit, S0-S5 stage ladder (S0 IRPING, S1 NMI intercept stub,
+S2 CH0-in-NMI, S3 one-frame edge capture, S4 gap classify + decode,
+S5 make/break + consumer), emission gate via debug_asm, CH0CAL primary
+/ IRPING transport-only regression, cold-recovery only. Full text in
+2026-08-25_s1_nmi_intercept_sop.md.
