@@ -520,3 +520,44 @@ harness fired all six trials; AGCPROBE2 (AGCPROBE.BAS line 190
 "All runs st=1 ed=2 H:1126 L:N/A" line is the CH0CAL gap2 anchor
 reading, not a battery result. Next session must re-run
 trials_high.txt and transcribe raw per-trial output in firing order.
+## 2026-08-24 · kbdnmi_time_biphase_decoder · manual-verified
+
+KBDNMI (Technical Reference entry 338) is a time-driven biphase
+decoder, not an edge-driven one. After the start-bit trailing edge it
+latches CH1 once, then samples PC6 at absolute half-bit offsets via
+subroutine I30 (5 samples, majority vote ≥3 → 1). A bit is valid only
+if its two half-samples are OPPOSITE (OFD8 CMP CL,AL / OFDB JE phase
+error); then odd parity is required (OFEF AND BL,1 / OFF2 JZ parity
+error). Either failure jumps to I9: beep, no character. Inter-bit gap
+merges do not disturb the intra-bit biphase transition and are therefore
+functionally invisible to stock decode. The frame gap (1500us) AGC
+recovery explains why the first short gap after it survives while
+mid-train gaps fuse.
+
+## 2026-08-24 · ed_envelope_edge_not_decode · empirical
+
+ed counts PC6 envelope edges via CH0 timestamps. It is a diagnostic,
+not a decode result. Deterministic hpress spec (20 bursts, verified
+pulse-for-pulse equivalent to build_frame(0x23)+build_frame(0xA3))
+returned ed=36 2/2; manual taps 36 2/2. Two stable merges: H6=1126,
+H17=1124, both 157us 0→1 gaps. H16=406 and L9=3572 (~1497us frame gap)
+stable across runs. Stock still prints 'h'. Code, Pi runtime, pigpiod,
+wiring, breadboard rework, and percussive contact all exonerated.
+The 38→36 shift is receiver analog drift in a closed warm room.
+
+## 2026-08-24 · z2_agc_floor_hypothesis · unverified
+
+Hypothesis: stock zero_silence_2_us=157 sits at the AGC/demod minimum
+resolvable silence. Envelope profile L=max(S−180, 79us) saturates to
+~79us at S=157 — shorter than the demod's minimum pulse width. Likely
+sizing order: set the tightest gap to the analog resolution floor, then
+build the biphase/time decoder above it so decode is blind to merges.
+No AGC datasheet in hand. KBDNMI mechanism is manual-verified; the
+157us floor is unverified. Settled only by the functional z2 sweep.
+
+## 2026-08-24 · ch0cal_ed_reading_conflict · conflict
+
+Historical CH0CAL anchor reading: ed=38. Current deterministic + manual
+reading: ed=36 (warm-room). Program bytes unchanged; reading shifted.
+Anchor stands as ground truth for the program. The ed=38 expectation is
+now environmental, not contractual.

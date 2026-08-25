@@ -209,3 +209,18 @@ regression: not applicable
   ],
   "notes": "W250 asymmetry intermittent (1/4); L staircase jumps 310->320 (334->404)."
 }
+## 2026-08-24 · ch0cal_deterministic_hpress · result
+
+contract: {"id":"ch0cal_deterministic_hpress","source":"CH0CAL/AGCPROBE",
+  "expected":{"st":1,"ed":"38 (anchor)","functional":"h"},
+  "regression":"IRPING","recovery":"cold_power_cycle"}
+
+result: st=1, ed=36 (2/2 deterministic), functional h decodes, kb intact.
+H: 550 548 550 550 548 1126 550 548 550 550 548 550 548 550 406 1124 550
+L: 334 478 1052 478 550 908 550 478 3572 334 478 1052 478 478 188 982 406
+Merges: H6=1126, H17=1124 (both 157us 0→1 gaps). Stable across 2/2.
+
+verdict: FAIL vs anchor ed=38; FUNCTIONAL PASS. Classified receiver
+analog drift (closed warm room). Code/Pi/wiring exonerated. One transient
+38 after percussive, not reproducible. z2 functional sweep deferred to
+next session.
