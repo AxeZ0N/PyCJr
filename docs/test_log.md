@@ -241,3 +241,18 @@ result: st=1, kb intact. Sweep S=260..160us, 12-burst trains.
 
 verdict: dense separation floor ~230-240us (stochastic onset 230,
 clean 240). H dense minimum 406ct (~170us). 250us cell refuted.
+## 2026-08-25 · RECOVERY4 · result
+
+{
+  "id": "RECOVERY4",
+  "source": "recovery4_battery.txt",
+  "regression": "AGCPROBE.BAS (AGC1) + CH0CAL ASM",
+  "recovery": "cold_power_cycle",
+  "results": [
+    {"label":"CTRL_180","ed":12,"fusions":6,"note":"reproduces dense collapse"},
+    {"label":"R4_180","ed":22,"fusions":1,"note":"fusion post-reset block 3"},
+    {"label":"R4_200","ed":24,"fusions":0,"note":"S=200 rescued by reset"},
+    {"label":"R4_220","ed":24,"fusions":0,"note":"L7=133 below 79us floor"}
+  ],
+  "verdict": "PASS mechanistically; retired economically (k≈3 vs k>22 break-even)"
+}

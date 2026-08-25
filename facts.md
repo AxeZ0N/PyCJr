@@ -615,3 +615,67 @@ emulator. The stock CPU hostage removal is a separate, unmeasured lever.
 Unverified: interleave a long AGC-reset silence (>=1500us) every few
 symbols, keep inter-symbol gaps tight (180-220us) in between. Untested;
 the one remaining analog idea that could restore partial cell shrink.
+## 2026-08-25 · recovery4_reset_suppresses_fusion · empirical
+
+RECOVERY4 (W=62us, 12-burst trains, reset 1500us after bursts 4/8,
+trailing 5000us; AGCPROBE.BAS capture, CH0CAL ASM):
+
+- CTRL_180 (no reset): ed=12, 6 fusions — reproduces dense-floor collapse.
+- R4_180: ed=22, 1 fusion (post-reset block 3) — reset drops fusion 6→1.
+- R4_200: ed=24, 0 fusions — S=200 collapse rescued by reset.
+- R4_220: ed=24 clean (L7=133 anomaly, see session loose ends).
+
+Reset L reads 3140/3142ct, matching the 1500us calibration (3142ct).
+
+## 2026-08-25 · periodic_recovery_retired · analysis
+
+Reset cost/sym = (W+S) + (R−S)/k. Win vs no-reset safe cell 302us/sym
+requires R < 180 + 60k. At R=1500: k > 22 clean symbols per reset.
+Measured grace k≈3 (fusion returned in block 3 of R4_180). Off by ~7×.
+No operating point breaks even — small R amortizes but buys no grace;
+large R buys grace but costs too much. Retired.
+
+## 2026-08-25 · ibg_minimum_unmeasured · analysis
+
+frame_gap_us=1500 is the empirical safe replacement for the 4840us
+11-stop-bit IBG (manual entry 94); stock decodes at 1500us. It is NOT
+proven the minimum possible IBG. The true AGC minimum below 1500us is
+unmeasured (z2 sub-gap sweep 157→80 deferred). Say "1500 is the
+verified safe replacement," not "smallest possible."
+
+## 2026-08-25 · receiver_observables_binary · analysis
+
+PC6 is one binary bit: demod outputs carrier-present HIGH / absent LOW
+(manual-verified entry 92). There is no amplitude axis at PC6. A
+three-state DC-on / DC-off / 40kHz scheme collapses: DC-on and DC-off
+both produce zero carrier → both read LOW. Only OOK survives. AGCPROBE
+duty-flat (W=25/40/62/125us all read 550ct) shows width is destroyed
+too; amplitude would be destroyed harder.
+
+## 2026-08-25 · modulation_alternatives_closed · analysis
+
+NRZ: consecutive 1s become one merged H (AGC is a merge machine).
+M-ary gap alphabet: retired (L saturates 190ct for gaps ≤260us).
+Width modulation: dead (duty-flat).
+Amplitude modulation: dead (PC6 binary, no amplitude path).
+FM sub-carrier: dead (fixed 40kHz demod, manual entry 92).
+Biphase is not the constraint; the AGC envelope (H_min~170us,
+L_min~79us) is. A custom decoder frees the validity rule
+(halves-opposite) for margin, not a smaller cell.
+
+## 2026-08-25 · keypress_loss_budget · analysis
+
+Stock keypress (manual entry 94) = four 4840us chunks: make frame,
+make IBG (11 stop bits), break frame, break IBG = 19360us. The cell
+(440us) is 2.3% of that budget. The analog work pinned only the cell.
+Remaining levers are design/software: framing-only (drop make+break,
+parity, stop) ~2×, and the CPU hostage (KBDNMI ~4.8ms/frame majority
+sampling). The 60ch/s throttle is policy, not hardware.
+
+## 2026-08-25 · analog_phase_closed · decision
+
+The AGC analog phase is closed. Four directions exhausted: cell shrink
+(440us pinned), periodic recovery (uneconomical), clock scaling (CH1
+granularity was never the limit), modulation alternatives (all dead).
+Remaining throughput is framing + CPU hostage. Next scope: custom
+deserializer (replace KBDNMI).
