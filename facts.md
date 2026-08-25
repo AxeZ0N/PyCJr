@@ -760,3 +760,59 @@ S2 CH0-in-NMI, S3 one-frame edge capture, S4 gap classify + decode,
 S5 make/break + consumer), emission gate via debug_asm, CH0CAL primary
 / IRPING transport-only regression, cold-recovery only. Full text in
 2026-08-25_s1_nmi_intercept_sop.md.
+## 2026-08-25 · basic_bp_preserve_contract · empirical
+
+Any machine code entered via `CALL O` from Cartridge BASIC must
+preserve bp across the call (push bp at entry after `pop ds`, pop bp
+immediately before `retf`). Clobbering bp corrupts the interpreter
+frame and yields `Division by zero in (blank)` with a dead keyboard —
+unrecoverable, cold power-cycle only. S1 v1 violated this; IRPING and
+CH0CAL already obey it. Promoted into platform skill Rule 1 via the
+skill patch in this payload.
+
+## 2026-08-25 · iret_bridge_status · analysis
+
+IRET (CF) is architecturally the only correct NMI-return primitive:
+RETF leaves FLAGS on the stack and corrupts the caller (manual-
+verified, BIOS KBDNMI entry 338 ends IN AL,A0h then IRET). Empirically,
+no `CALL O` bridge program using IRET has passed hardware — S1 v2,
+the only IRET-bearing program run, rebooted into BIOS with cause
+undiagnosed. Label discipline: `manual-verified` means present in the
+manual/BIOS listing, not safe in our bridge path. IRET stays
+`unverified` in the bridge until the per-instruction ladder anchors
+it. Corrects the "approved for the handler" note in
+`debug_asm_subset_s1`.
+
+## 2026-08-25 · basload_loaded_byte_discriminator · analysis
+
+BASLOAD prints `loaded N bytes` where N is the actual machine-code
+length. N is the primary discriminator between DATA blocks: IRPING =
+61, S1 v1 = 110, S1 v2 = 114. Earlier "S1 timeouts" were IRPING (61
+bytes) finishing through BASLOAD's S1 result-map offsets, not S1
+timeouts. Always gate on the printed byte count before arming.
+
+## 2026-08-25 · on_error_nmi_reenable · open item
+
+User reports that when the BASIC interpreter survives a machine-code
+return but NMI is left masked, an `ON ERROR GOTO` handler can
+re-enable the keyboard (IN AL,A0h then OUT A0h,80h). Exact BASIC
+pattern and recovery-stub location not yet transcribed. Plan: capture
+the working pattern and fold it into BASLOAD as a standard recovery
+path. Applies only when the interpreter frame is intact; a bp clobber
+bypasses ON ERROR entirely.
+
+## 2026-08-25 · s1_stage_gate_decision · decision
+
+S1 NMI-intercept scope closed on catastrophic failure. Next scope:
+per-instruction hardware verification ladder, one risk class per
+stage, each gate must pass on the PCjr before advancing. Regression:
+IRPING then CH0CAL before any NMI-touching stage. Full ladder in
+2026-08-25_s1_stage_gate_triggered.md.
+
+## 2026-08-25 · payload_skill_patch_extension · decision
+
+Payload may now carry `skill_patch.diff`: a unified diff for the two
+bds/10_skills files (F1-F5 this session). It is applied manually via
+`git apply skill_patch.diff` and reviewed with `git diff -- bds/`,
+NOT through bin/jr-ingest.sh. Full overwrite files are never emitted
+in the payload; the patch carries only surgical hunks.

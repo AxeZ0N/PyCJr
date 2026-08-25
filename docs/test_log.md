@@ -256,3 +256,38 @@ clean 240). H dense minimum 406ct (~170us). 250us cell refuted.
   ],
   "verdict": "PASS mechanistically; retired economically (k≈3 vs k>22 break-even)"
 }
+## 2026-08-25 · irping_basload_pass · result
+
+contract: {"id":"IRPING_BASLOAD","source":"BASLOAD.BAS + IRPING DATA",
+"expected":{"return":"RETURNED OK","transport":"sane (char echo)"},
+"regression":"self","recovery":"cold_power_cycle"}
+result: `loaded 61 bytes`; Pi key echoed on screen; keyboard intact
+after. Transport sane. Rising/falling not transcribed this run; the
+IRPING block read through BASLOAD's S1 offsets printed flag=0
+saved=6:6 status=0 — a diagnostic misread, not a transport failure.
+
+## 2026-08-25 · ch0cal_envshape_pass · result
+
+contract: {"id":"CH0CAL_ENVSHAPE","source":"ENVSHAPE.BAS (CH0CAL ASM)",
+"expected":{"return":"RETURNED OK","functional":"h decodes","keyboard_after":"intact"},
+"regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
+result: passed; functional 'h' decode, keyboard intact. ed reading
+environmental per facts.md ch0cal_ed_reading_conflict; not
+contractual.
+
+## 2026-08-25 · s1_v1_div0 · result
+
+contract: {"id":"S1_NMI_INTERCEPT","source":"BASLOAD.BAS + S1 v1 (110B)",
+"expected":{"return":"RETURNED OK","flag":1,"status":0,"keyboard_after":"intact"},
+"regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
+result: FAIL. `loaded 110 bytes`, ~3s, `Division by zero in (blank)`,
+keyboard dead. Root cause: bp clobber (no push/pop bp).
+
+## 2026-08-25 · s1_v2_reboot · result
+
+contract: {"id":"S1_NMI_INTERCEPT_V2","source":"BASLOAD.BAS + S1 v2 (114B)",
+"expected":{"return":"RETURNED OK","flag":1,"status":0,"keyboard_after":"intact"},
+"regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
+result: FAIL. `loaded 114 bytes`; Pi 'h' during window -> PCjr reboot
+into BIOS. No result map read. Defect not localized; stage gate
+triggered.
