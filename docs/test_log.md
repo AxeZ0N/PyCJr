@@ -290,4 +290,36 @@ contract: {"id":"S1_NMI_INTERCEPT_V2","source":"BASLOAD.BAS + S1 v2 (114B)",
 "regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
 result: FAIL. `loaded 114 bytes`; Pi 'h' during window -> PCjr reboot
 into BIOS. No result map read. Defect not localized; stage gate
-triggered.
+triggered.## 2026-08-25 · s1_ladder_stage1_bridge · result
+contract: {id s1_ladder_stage1_bridge, expected return RETURNED OK,
+keyboard intact, regression none}
+result: PASS. loaded 9 bytes, returned ok, keyboard alive.
+
+## 2026-08-25 · s1_ladder_stage2_selfloc · result
+contract: {id s1_ladder_stage2_selfloc, expected flag 0x5A, return OK}
+result: PASS. flag=0x5A (90 dec), keyboard alive.
+
+## 2026-08-25 · s1_ladder_stage3_nmi_touch · result
+contract: {id s1_ladder_stage3_nmi_touch, expected return OK,
+keyboard intact}
+result: PASS. mask/clear/restore clean, keyboard alive.
+(regression IRPING + CH0CAL both green before run)
+
+## 2026-08-25 · s1_ladder_stage4_read_ivt · result
+contract: {id s1_ladder_stage4_read_ivt, expected saved F000:xxxx}
+result: PASS. saved=3960:61440 = F000:0F78, keyboard alive.
+note: harness first run overflowed (256*peek > 32767 under DEFINT);
+fixed with sv!/sg! single precision.
+
+## 2026-08-25 · s1_ladder_stage5_write_ivt · result
+contract: {id s1_ladder_stage5_write_ivt, expected return OK,
+saved unchanged, keyboard intact}
+result: FAIL. screen flag=0 saved=F78:F000 status=0, keyboard DEAD.
+false pass caught on human keyboard gate. cold_power_cycle.
+
+## 2026-08-25 · s1_ladder_stage5c_noop_write · result
+contract: {id s1_ladder_stage5c_noop_write, expected return OK,
+keyboard intact}
+result: FAIL. returned ok, saved=F78:F000, keyboard DEAD. no-op write
+of saved value proves the IVT write act itself is the trigger, not the
+value. Decision: INT 02h vector write is UB on this machine.

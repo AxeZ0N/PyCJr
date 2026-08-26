@@ -816,3 +816,25 @@ bds/10_skills files (F1-F5 this session). It is applied manually via
 `git apply skill_patch.diff` and reviewed with `git diff -- bds/`,
 NOT through bin/jr-ingest.sh. Full overwrite files are never emitted
 in the payload; the patch carries only surgical hunks.
+## 2026-08-25 · int02_vector_write_ub · decision
+Writing the INT 02h vector (0000:0008/000A) is undefined behavior on
+this machine. Stage 5 (dummy 1111:2222) and stage 5c (no-op write of
+saved value) both returned clean on screen but killed the keyboard;
+5c never had a bogus vector at any instant, isolating the write act
+itself. Never install an NMI handler via IVT write.
+supersedes: 2026-08-25 · s1_nmi_intercept_contract (install premise)
+
+## 2026-08-25 · s1_ladder_residue · empirical
+Per-instruction ladder, stage-gated on hardware: stages 1-4 PASS
+(bridge push/pop bp, selfloc+store, NMI mask/clear/restore, clean IVT
+read F000:0F78). Stage 4 proved DS-switch discipline fixes the S1 SOP
+save bug (DS=0 during [bp+disp] store wrote 0000:0002/0000:0004).
+Stages 5/5c FAIL keyboard-dead -> IVT write UB. Reusable residue:
+mask NMI -> poll 62h bit 6 -> CH0-latch timestamps -> restore before
+RETF.
+
+## 2026-08-25 · basload_anchor_restore · decision
+docs/anchors/BASLOAD.BAS restored: line 30 x=0 (was x="" type
+mismatch under defint); sv!/sg! single-precision readback (DEFINT
+256*peek overflowed on BIOS segment F000); line 200 prints flag/saved/
+status in hex. loaded-N count stays decimal — it is a gate, not a value.
