@@ -3,7 +3,7 @@
 3 ' append a program's data lines at 1000.., ending in -1 before running.
 10 defint a-z
 20 dim a(300)
-30 i=0:o=0:d=0:x=""40fl=0:sv=0:sg=0:st=050i=060readd70ifd=−1then11080pokevarptr(a(0))+i,d90i=i+1100goto60110print"loaded";i;"bytes.pressenter,thensendonekey..."120inputx=""
+30 i=0:o=0:d=0:x=0
 40 fl=0:sv=0:sg=0:st=0
 50 i=0
 60 read d
@@ -12,7 +12,7 @@
 90 i=i+1
 100 goto 60
 110 print "loaded ";i;" bytes. press enter, then send one key..."
-120 input x=""40fl=0:sv=0:sg=0:st=050i=060readd70ifd=−1then11080pokevarptr(a(0))+i,d90i=i+1100goto60110print"loaded";i;"bytes.pressenter,thensendonekey..."120inputx
+120 input x
 130 o=varptr(a(0))
 140 call o
 150 print "returned ok"
