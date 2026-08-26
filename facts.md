@@ -940,3 +940,58 @@ only the retrieval hook. Prefer few called keys, one per decision
 cluster. Keep always keys near-empty. Anti-patterns: duplicating a
 facts.md heading body-for-body, values over 300 chars, pcjr_ prefix,
 writing before approval, mixing memory tags with prose in one message.
+## 2026-08-26 · s4_decode_spec_locked · decision
+
+S4 decode spec locked: sample-based half-cell decoder, KBDNMI-verbatim
+core (entry 93/94), targeting the Pi emitter's actual frame (pycjr.py
+build_frame verified byte-consistent). Edge-gap classification is
+retired as a decode primitive: the 0→1 inter-bit gap (157us) fuses
+below the pinned (170,175]us AGC fuse band, so the edge sequence is
+structurally lossy. The intra-bit mid-cell biphase transition survives
+every merge and is the decode axis.
+
+Locked parameters:
+- 5× majority per half-cell (stock-verbatim, entry 93)
+- CH0 latched timing, 220us half-cell grid (2.38636 MHz empirical)
+- start: burst-first, 310us post-burst wait (entry 93/94)
+- 8 data LSB-first + odd parity; biphase per entry 94
+- stop bit omitted by Pi emitter; decoder never samples it
+- 1× sampling retired for first build; 5× is the shipped config
+
+Result map: [0]=status (0 ok / 1 parity / 2 phase / 3 timeout),
+[2..]=scancode. BASIC prints char only.
+
+## 2026-08-26 · start_phase_310_manual · manual-verified
+
+Start bit is burst-first (logical-1 half) followed by a 310us silence
+(entry 93/94). 310us is the precise manual value, not 1.5× (310/220 =
+1.41× the half-cell). The extended silence is what makes the start bit
+unique and pulls the first data-bit sample onto the nominal half-cell
+center.
+
+## 2026-08-26 · pi_stop_omission_source_verified · empirical
+
+pycjr.py build_frame (lines 244-271) emits parity bit → 1500us frame
+gap, no stop burst. Source-verified against repo. The 1500us gap IS the
+stop period. Invisible to S4 decode because the stop bit is never
+sampled (matches KBDNMI listing: parity → INT 48h, no 11th consume).
+
+## 2026-08-26 · bare8_ceiling_revision · analysis
+
+supersedes: 2026-08-25 · framing_only_2x · analysis
+
+Bare-8 custom framing ceiling recalculated: 8×440us = 3.52ms CPU lock
++ 1.5ms frame gap (CPU free) ≈ 5.0-5.4ms wall/keypress → ~185-199
+ch/s. Stock is 19.36ms/keypress (51.6/s). Gain ≈ 3.5-3.8×, not the
+~2× committed in framing_only_2x. The earlier figure was a conservative
+round from 60→120 emitter-throttle thinking; the 8×bit_time math
+exposes the real ceiling. Bare-8 framing remains the S5 horizon, not
+S4 scope.
+
+## 2026-08-26 · s4_sampler_spacing_open · open item
+
+Entry 93 says "samples each half-bit-sample 5 times" but does not
+state the intra-sample spacing. The cadence lives in the KBDNMI listing
+(entries 334-346), not the prose. At S4 code emission: retrieve-before-
+emit to pin it. Travels as `; VERIFY: intra-sample spacing against
+KBDNMI listing`. Non-blocking for the spec lock.
