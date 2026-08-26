@@ -838,3 +838,41 @@ docs/anchors/BASLOAD.BAS restored: line 30 x=0 (was x="" type
 mismatch under defint); sv!/sg! single-precision readback (DEFINT
 256*peek overflowed on BIOS segment F000); line 200 prints flag/saved/
 status in hex. loaded-N count stays decimal — it is a gate, not a value.
+## 2026-08-25 · deserializer_sop_polling_v2 · decision
+
+Custom-deserializer SOP rewritten for polling. The interrupt-driven half is
+retired; no IVT write appears anywhere in the ladder. Ladder v2:
+
+- S0 IRPING — transport-only regression, unchanged.
+- S1 polling probe stub — mask NMI (OUT A0h,00h), dummy IN AL,A0h to clear
+  the latch, finite poll of 62h bit 6, restore (OUT A0h,80h), RETF.
+- S2 CH0-in-poll-loop — CH0 latched read per edge, timestamp array.
+- S3 one-frame edge capture.
+- S4 gap classify + software decode (440us cell; start + 8 data + parity +
+  stop; odd parity).
+- S5 make/break + consumer.
+
+S1/S2 reuse the hardware-verified ladder residue from
+2026-08-25_s1_ivt_write_ub.md (stages 1-4 pass: bridge, selfloc, NMI
+mask/clear/restore, clean IVT read). CH0CAL remains the primary regression;
+IRPING stays transport-only. Two flags carried: arming-swallow (wait-for-
+first-edge discipline), and stock make-only/held-key behavior unverified
+(blocks nothing before S5). S1 v2 body choice (verbatim IRPING edge-counter
+body vs first-edge-only stub) left open.
+
+supersedes: 2026-08-25 · deserializer_sop_frozen (interrupt-driven S1-S5 ladder)
+
+## 2026-08-25 · s1_frozen_image_bp_violation · conflict
+
+The frozen 110-byte S1 image recorded in 2026-08-25_s1_nmi_intercept_sop.md
+and summarized in s1_emission_gate_pass omits push bp at entry and pop bp
+before retf, violating the bp-preserve contract (Rule 1). Its self-location
+(call get_ip / pop bp / lea bp,[bp+0x7B]) clobbers the interpreter frame
+pointer; this is the S1 v1 that hardware-failed with Division by zero.
+Corrected image is S1 v2, 114 bytes: push bp at entry, pop bp before retf,
+selfloc pop_offset=6 disp=0x7A; full listing in
+2026-08-25_s1_stage_gate_triggered.md. Both images are obsolete — the
+interrupt-driven path is retired by the INT 02h IVT-write UB finding — but
+the record must not leave a Rule-1-violating image as the frozen S1.
+
+supersedes: 2026-08-25 · s1_emission_gate_pass (110-byte image as frozen S1)
