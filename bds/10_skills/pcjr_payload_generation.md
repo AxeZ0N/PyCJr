@@ -78,14 +78,24 @@ files; do not reformat into prose.
 ## Memory batch rules (separate from the payload, same close)
 
 - Propose the full memory batch — every key and its complete value —
-and wait for approval. One batch per turn.
-- Never write memory silently during the close.
+  and wait for approval. One batch per turn. Never write silently.
 - Key naming: lowercase snake_case, no `pcjr_` prefix. The matcher
-splits on underscores and fires per token (FAQ §20); generic tokens
-like `cpu`, `port`, `frame`, `direction` poison a called key.
-- Prefer few called keys, one per decision cluster, value as a pointer
-to the session file. Keep `always` keys near-empty.
-- Example good value: `throughput_rethink (called): "86 retired (INT16h consumer drain); 60=throttle; floors 4840us IBG + KBDNMI ~4.8ms/frame; see 2026-08-22_throughput_rethink.md"`.
+  splits on underscores and fires per token (FAQ §20).
+- Optimize keyword hit rate. Pick tokens a user will actually type
+  when recalling the decision (`base26`, `ch0cal`, `polling`). Never
+  build a called key from generic tokens (`cpu`, `port`, `frame`,
+  `direction`) — they fire on unrelated messages and poison context.
+- Value budget: target ~200 chars, hard cap 300. A value is a route
+  to the ledger, not the ledger itself. End with the pointer:
+  `→ sessions/<file>.md` or `→ facts <heading>`.
+- Do not duplicate facts.md. If a value is already a facts.md heading,
+  the memory value references the heading and adds only the retrieval
+  hook. Never restate the full fact.
+- Prefer few called keys, one per decision cluster. Keep `always`
+  keys near-empty.
+- Example good value (called): `throughput_rethink: "86 retired
+  (INT16h drain); 60=throttle; floors 4840us IBG + KBDNMI ~4.8ms/frame;
+  → 2026-08-22_throughput_rethink.md"`.
 
 ## Anti-patterns (never)
 
@@ -97,3 +107,8 @@ to the session file. Keep `always` keys near-empty.
 - Bundling future decoder/encode specs into session notes as decisions.
 - Emitting a handoff without the Ground truth section.
 - Shipping a `docs/anchors/` file that overwrites an existing anchor.
+- A memory key that duplicates a facts.md heading body-for-body.
+- A memory value over 300 chars.
+- A `pcjr_`-prefixed memory key.
+- Writing any memory tag before the full batch is approved.
+- Mixing memory tags with prose in one message (emit each tag alone).

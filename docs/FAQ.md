@@ -156,4 +156,9 @@ so `pcjr_*` keys fire like `always` and bloat context. Use `carrier_timing`,
 
 ## 21. What's inside an ingest payload?
 
-`COMMIT.txt` (one-line commit message), `facts
+`COMMIT.txt` (one-line commit message), `facts.append.md` (facts to
+append, deduped by heading), `sessions/<date>_<scope>.md` (the new
+session handoff), `docs/test_log.append.md` (only when a hardware run
+happened), and optional `docs/anchors/<PROG>.BAS` / `<PROG>.ASM` (new
+or restored ground-truth anchors). Repo files are never overwritten;
+ingest appends and commits once. Run `bin/jr-ingest.sh payload.zip`.
