@@ -876,3 +876,67 @@ interrupt-driven path is retired by the INT 02h IVT-write UB finding — but
 the record must not leave a Rule-1-violating image as the frozen S1.
 
 supersedes: 2026-08-25 · s1_emission_gate_pass (110-byte image as frozen S1)
+## 2026-08-26 · s1v2_polling_pass · empirical
+
+S1V2.BAS, 71 bytes, loaded 71. flag=0, rising=17, falling=17,
+keyboard intact. Bridge push cs / pop ds / push bp ... pop bp / retf
+verified on hardware. bp-preserve correct; S1 v1's bp-clobber div0 is
+not reproduced. DATA 1000-1070 byte-matches S1V2.ASM via debug_asm.
+
+## 2026-08-26 · s2v1_ch0_poll_pass · empirical
+
+S2V1.BAS, 106 bytes, loaded 106. st=1, edge count 22h (34) in the
+34-38 normal band, keyboard intact. CH0 latch/read per edge inside a
+masked-NMI poll loop is safe on hardware. 16-bit cmp (39 /r) used in
+place of CH0CAL's 38 /r; all instructions inside the debug_asm subset.
+DATA 1000-1100 byte-matches S2V1.ASM via debug_asm.
+
+## 2026-08-26 · s3_raw_ring_retired · decision
+
+Hand-transcription of a raw timestamp ring is retired. The one
+attempted S3 transcription corrupted beyond recovery (out-of-range and
+impossible tokens); hardware, ASM, and encoder were exonerated.
+Recording rule: a decoder prints only the functional answer on the
+machine (h / beep / wrong-char); never dump raw edge stamps for manual
+copy. ed is a ring-size sanity check, not a decode gate.
+
+## 2026-08-26 · base26_encoder_anchored · empirical
+
+Base26 encoder reconstructed from the locked format and
+hardware-verified via B26VEC.BAS: all 11 frozen vectors pass
+(0->A ... 65535->DSYP). A=0, variable-width, no leading zeros,
+A-Z only. This closes the missing-ENVSHAPE26-source gap.
+supersedes: 2026-08-22 · base26_dump_locked · decision
+
+## 2026-08-26 · ch0cal_cmp38_ungated · open item
+
+CH0CAL.ASM contains 38 D8 (cmp al,bl), outside the debug_asm verified
+subset. Architecturally valid and empirically sound (CH0CAL passed
+hardware), but never passed the emission gate as currently defined.
+S2 v1 re-derived the compare as 16-bit cmp bx,ax (39 /r), in-subset.
+Resolution options, none urgent: extend debug_asm to 38 /r, re-anchor
+CH0CAL with 39 /r, or leave flagged. Not a hardware defect.
+
+## 2026-08-26 · cartridge_basic_float16 · empirical
+
+DEFINT overflows above 32767: S3V1 hit "Overflow in 190" constructing
+the 61440 iteration count from peek() intermediates. Any 16-bit
+reconstruction needs the float suffix (!) on the variable and 256! as
+the multiplier, as ENVSHAPE/AGCPROBE already do. BASLOAD-family report
+lines print via hex$() per the standing output rule.
+
+## 2026-08-26 · memory_batch_spec · decision
+
+Memory generation is formalized. Propose the full batch and wait for
+approval; one batch per turn; never write silently. Key naming:
+lowercase snake_case, no pcjr_ prefix. Optimize keyword hit rate: pick
+tokens the user will type when recalling the decision (base26, ch0cal,
+polling); never build a called key from generic tokens (cpu, port,
+frame, direction). Value budget: target ~200 chars, hard cap 300; a
+value is a route to the ledger, not the ledger, and ends with the
+pointer (-> sessions/<file>.md or -> facts <heading>). Do not duplicate
+facts.md: if a heading already owns the value, reference it and add
+only the retrieval hook. Prefer few called keys, one per decision
+cluster. Keep always keys near-empty. Anti-patterns: duplicating a
+facts.md heading body-for-body, values over 300 chars, pcjr_ prefix,
+writing before approval, mixing memory tags with prose in one message.

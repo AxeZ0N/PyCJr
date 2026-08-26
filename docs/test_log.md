@@ -323,3 +323,68 @@ keyboard intact}
 result: FAIL. returned ok, saved=F78:F000, keyboard DEAD. no-op write
 of saved value proves the IVT write act itself is the trigger, not the
 value. Decision: INT 02h vector write is UB on this machine.
+## 2026-08-26 · s1v2 · result
+
+{
+  "id": "s1v2",
+  "source": "S1V2.BAS",
+  "result": {
+    "return": "returned ok",
+    "loaded": 71,
+    "flag": "0",
+    "rising": "17",
+    "falling": "17",
+    "keyboard": "intact"
+  },
+  "pass": true,
+  "recovery": "cold_power_cycle"
+}
+
+## 2026-08-26 · s2v1 · result
+
+{
+  "id": "s2v1",
+  "source": "S2V1.BAS",
+  "result": {
+    "return": "returned ok",
+    "loaded": 106,
+    "st": "1",
+    "edge_count": "22h (34)",
+    "snapshot": "0",
+    "iter_low_byte": "0",
+    "keyboard": "intact"
+  },
+  "pass": true,
+  "recovery": "cold_power_cycle"
+}
+
+## 2026-08-26 · b26vec · result
+
+{
+  "id": "b26vec",
+  "source": "B26VEC.BAS",
+  "result": {
+    "vectors": 11,
+    "match": "11/11",
+    "keyboard": "n/a (no machine code)"
+  },
+  "pass": true,
+  "recovery": "cold_power_cycle"
+}
+
+## 2026-08-26 · s3v1 · result
+
+{
+  "id": "s3v1",
+  "source": "S3V1.BAS",
+  "result": {
+    "return": "returned ok",
+    "loaded": 106,
+    "st": "1",
+    "ed": "36",
+    "dump": "transcription corrupted"
+  },
+  "verdict": "void — transcription only",
+  "note": "hardware, ASM, and encoder exonerated; method retired",
+  "recovery": "cold_power_cycle"
+}
