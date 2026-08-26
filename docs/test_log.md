@@ -388,3 +388,32 @@ value. Decision: INT 02h vector write is UB on this machine.
   "note": "hardware, ASM, and encoder exonerated; method retired",
   "recovery": "cold_power_cycle"
 }
+## 2026-08-26 · s4a_v1_timeout · result
+
+contract: {"id":"S4A","source":"S4A.BAS v1 (139B, CH0 variant)",
+"expected":{"return":"RETURNED OK","st":"0|3","half":"0|1",
+"keyboard_after":"intact"},
+"regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
+result: PASS (timeout path). No stimulus; st=0, half=0,
+t0=58371 t1=45216 (code-tail artifacts, not timestamps). Keyboard
+intact. 2/2 identical.
+
+## 2026-08-26 · s4a_v1_h_softlock · result
+
+contract: {"id":"S4A","source":"S4A.BAS v1 (139B, CH0 variant)",
+"expected":{"return":"RETURNED OK","st":3,"half":"0|1",
+"keyboard_after":"intact"},
+"regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
+result: FAILED. h press during window caused screen line corruption
+and keyboard softlock. Root cause: v1 restored NMI mid-make-frame;
+KBDNMI deserialized the frame tail as garbage. Cold power-cycle
+recovered.
+
+## 2026-08-26 · s4a_v2_h_pass · result
+
+contract: {"id":"S4A","source":"S4A.BAS v2 (112B, LOOP-timing)",
+"expected":{"return":"RETURNED OK","st":3,"half":"0|1",
+"keyboard_after":"intact"},
+"regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
+result: PASS. h press: st=3, half=1 (predicted first data bit of
+0x23). Keyboard alive. Run via --run_test.

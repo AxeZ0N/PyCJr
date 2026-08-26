@@ -995,3 +995,50 @@ state the intra-sample spacing. The cadence lives in the KBDNMI listing
 (entries 334-346), not the prose. At S4 code emission: retrieve-before-
 emit to pin it. Travels as `; VERIFY: intra-sample spacing against
 KBDNMI listing`. Non-blocking for the spec lock.
+## 2026-08-26 · s4a_hardware_pass · empirical
+
+S4A (frame-sync + first half-cell sampler, 112B) passed on hardware:
+st=3, half=1 on Pi 'h' (0x23; LSB-first first data bit = 1, so half=1
+is the predicted value, stronger than the contract's "0|1"). Keyboard
+alive. Bridge, selfloc, NMI mask/restore, finite arm, rising+trailing
+edge sync, 5x majority, and end-quiet wait verified together in one
+run. Timeout path (no stimulus) st=0 clean on the v1 variant.
+
+## 2026-08-26 · s4a_midframe_return_defect · empirical
+
+S4A v1 (139B) returned to BASIC immediately after the first half-cell
+sample, restoring NMI while the rest of the make frame was still
+arriving. KBDNMI deserialized the frame tail as a garbage scan code ->
+screen line corruption + keyboard softlock. Cold power-cycle recovered.
+Fix (v2): end-quiet wait polls PC6 for 400 consecutive quiet samples,
+any burst resets the count, before NMI is restored. The wait completes
+in the post-keypress silence, masking the entire press including the
+break frame - BIOS never buffers the key. Desirable for S4B.
+
+## 2026-08-26 · s4a_loop_timing_substitution · decision
+
+S4A uses LOOP-constant delays (CX=90 start-phase, CX=190h end-quiet)
+instead of the CH0-latched grid the S4 spec called for. CH0 word-imm
+CMP (81 /7 iw) did not fit the 128-byte code ceiling and is also a
+debug_asm decode bug. LOOP timing is deterministic on the 8088; the
+risk is calibration accuracy, not drift. S4A passes with these
+constants for one h run. S4B decision pending: LOOP vs extending
+debug_asm for CH0. Scopes only S4A; the locked S4 spec is unchanged
+for later stages unless the user locks a revision.
+
+## 2026-08-26 · code_region_128_ceiling · analysis
+
+Machine code invoked via CALL O must end at offset <= 128 or it
+overlaps the result region (BASIC PEEKs at O+128). S4A v2 is 112 bytes;
+S4A v1's CH0 idiom was 139 bytes and overlapped. Hard constraint for
+all future stages.
+
+## 2026-08-26 · debug_asm_rel8_branch_gate · decision
+
+debug_asm rel8 returns the displacement via next_ip semantics; branch
+validates (at,target) pairs against decoded displacements. Emission
+gate order is selfloc -> rel8/branch -> decode. Hand-rolled rel8 is a
+process violation; three S4A drafts with hand-rolled displacements
+failed decode and were rejected before reaching hardware. This closes
+the ch0cal_cmp38_ungated-class gap: every new stage now runs the full
+per-branch gate.
