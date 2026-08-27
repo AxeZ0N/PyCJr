@@ -446,3 +446,18 @@ result: st=3 rise=0xC330 trail=0xC0D8 burst=0x258 (600 counts=251.4us)
   half=0, keyboard intact. Fixed 740-anchor samples the bit0 boundary
   and disagrees with S4A's half=1 at the same nominal offset. Negative
   result for fixed grid; edge-sync is the next path. RECORDED.
+## 2026-08-27 · dec1_st1_hw_pass · result
+{
+  "id": "DEC1_ST1",
+  "source": "DEC1_ST1.BAS",
+  "expected": {
+    "return": "RETURNED OK",
+    "flag": "2 when both edges seen",
+    "span": "880..1100 counts"
+  },
+  "regression": "IRPING -> S4B1_ST3B",
+  "recovery": "cold_power_cycle"
+}
+result: PASS 2/2. Run 1: flag=2, r0=0xCDD0, r1=0xCA54, span 892 ct
+(373.8 us). Run 2: flag=2, r0=0xBB46, r1=0xB7C8, span 894 ct
+(374.6 us). Keyboard intact. loaded-106 gate observed.

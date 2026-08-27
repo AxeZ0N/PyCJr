@@ -1133,3 +1133,28 @@ literals `0AAh` (use `0xAA` or decimal), rejects `in al,0A0h` written as
 `0A0h` literal (use `0xA0`), enforces rel8 range -128..127 (use a
 two-hop jmp for distant targets). `81 /7 iw` (cmp r/m16,imm16) encodes
 and decodes correctly.
+## 2026-08-27 · dec1_st1_hw_pass · empirical
+
+DEC1_ST1 two-edge span probe passed hardware 2/2. Run 1: flag=2,
+r0/r1 = 0xCDD0:0xCA54, span 0x037C = 892 counts = 373.8 us. Run 2:
+flag=2, r0/r1 = 0xBB46:0xB7C8, span 0x037E = 894 counts = 374.6 us.
+Keyboard intact both runs. Repeatability ~2 counts (~0.84 us), matching
+the recorded short-term H/L repeatability floor. loaded-106 gate
+observed on both runs. Anchored.
+
+## 2026-08-27 · dec1_first_edge_bit0_inference · analysis
+
+DEC1_ST1 span 892/894 counts matches the ENVSHAPE26 bit0 cell
+(H 550 + L 332 = 882 counts) within the recorded run-to-run envelope
+variance. The start burst (~220-251 us stretched per S4B1_ST3B) was
+swallowed by the arming window, so DEC1's first detected rising edge
+is bit0, not the start bit. The measured span is the bit0->bit1
+rising-edge cell. Inference, not proven: a three-latch variant or an
+explicit pre-wait would pin edge identity.
+
+## 2026-08-27 · pjasm_bracket_spacing · analysis
+
+pjasm rejects spaces inside memory operands: `lea bp,[bp + 122]` fails
+with `unsupported r/m operand`, while `lea bp,[bp+122]` assembles.
+Extends pjasm_operand_rules (2026-08-26), which covered literal forms
+and opcode names but not bracket spacing.
