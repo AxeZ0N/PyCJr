@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""pjasm v6.0 Stage D (cut) -- closed-subset PCjr bridge assembler.
+"""pjasm v6.1 -- closed-subset PCjr bridge assembler.
 
 Encode-only. One instruction table drives a single generic encoder.
 No decoder here: decode stays in pcjr_asm_debug.py, where P1 already
@@ -10,6 +10,16 @@ Table conventions (documented because they are real):
   - memory-dest CMP always emits 81 iw; 80 ib is register-r8 only.
   - [bp] and [bp+0] normalize to the same bytes (mod=1 disp8=0).
   - LEA bp,[bp+disp] always emits mod=2 disp16.
+
+v6.1 additions (KBDNMI-core r8 shapes):
+  - test r8,imm  emits F6 /0 ib (Grp3); register-only, no A8 form.
+  - xor  r8,r8   emits 32 /r (r8,rm8) to match KBDNMI 32 xx bytes.
+  - or   r8,r8   emits 0A /r (r8,rm8) to match KBDNMI OR BH,AL = 0A F8.
+  - xchg r8,r8   emits 86 /r (r8,rm8) to match KBDNMI XCHG AH,AL = 86 E0.
+  - shr  r8,1    emits D0 /5 ib; only the immediate 1 is accepted.
+  - inc  r8      emits FE /0 (no immediate).
+  - dec  r8      emits FE /1 (no immediate).
+  - jnb / jnc    emit 73 rel8.
 
 Grammar (strict):
     label:
@@ -77,7 +87,8 @@ REGS16 = {"ax": 0, "cx": 1, "dx": 2, "bx": 3, "sp": 4, "bp": 5,
 REG8 = {"al": 0, "cl": 1, "dl": 2, "bl": 3, "ah": 4, "ch": 5,
         "dh": 6, "bh": 7}
 REL8_OP = {"je": 0x74, "jz": 0x74, "jne": 0x75, "jnz": 0x75,
-           "jc": 0x72, "jmp": 0xEB, "loop": 0xE2}
+           "jc": 0x72, "jnb": 0x73, "jnc": 0x73,
+           "jmp": 0xEB, "loop": 0xE2}
 
 class CompileError(Exception):
     pass
@@ -154,6 +165,9 @@ REL16 = "rel16"
 MODRM = "modrm"
 GRP = "grp"
 LEA16 = "lea16"
+GRP_R8_IMM8 = "grp_r8_imm8"
+GRP_R8_NOIMM = "grp_r8_noimm"
+SHIFT_R8_1 = "shift_r8_1"
 
 SPECIAL = {
     "push cs":    {"op": 0x0E, "kind": FIXED},
@@ -242,6 +256,15 @@ _add("cmp", "rm,imm", 0x81, GRP, "rm16,imm", imm=2, grp=7)
 _add("mov", "r8,imm", 0xC6, GRP, "rm8,imm", imm=1, grp=0)
 _add("mov", "rm,imm", 0xC6, GRP, "rm8,imm", imm=1, grp=0)
 
+# --- v6.1 KBDNMI-core r8 shapes ---
+_add("test", "r8,imm", 0xF6, GRP_R8_IMM8, imm=1, grp=0)
+_add("shr", "r8,imm", 0xD0, SHIFT_R8_1, grp=5)
+_add("inc", "r8", 0xFE, GRP_R8_NOIMM, grp=0)
+_add("dec", "r8", 0xFE, GRP_R8_NOIMM, grp=1)
+_add("xor", "r8,r8", 0x32, MODRM, "r8,rm8")
+_add("or", "r8,r8", 0x0A, MODRM, "r8,rm8")
+_add("xchg", "r8,r8", 0x86, MODRM, "r8,rm8")
+
 def _rel8_bytes(here, target):
     disp = target - (here + 2)
     if not (-128 <= disp <= 127):
@@ -302,6 +325,12 @@ def _encode_general(row, m, ops, here, resolve):
         return _encode_modrm(row, ops)
     if row["kind"] == GRP:
         return _encode_grp(row, ops)
+    if row["kind"] == GRP_R8_IMM8:
+        return _encode_grp_r8_imm8(row, ops)
+    if row["kind"] == GRP_R8_NOIMM:
+        return _encode_grp_r8_noimm(row, ops)
+    if row["kind"] == SHIFT_R8_1:
+        return _encode_shift_r8_1(row, ops)
     raise CompileError(f"unsupported row kind {row['kind']}")
 
 def _encode_modrm(row, ops):
@@ -328,6 +357,31 @@ def _encode_grp(row, ops):
     modrm = (mod << 6) | (row["grp"] << 3) | rm
     imm = _imm_bytes(_parse_int(ops[1]), row["imm"])
     return bytes([row["op"], modrm]) + disp + imm
+
+def _encode_grp_r8_imm8(row, ops):
+    mod, rm, disp = _parse_rm(ops[0])
+    if mod != 3:
+        raise CompileError("group op requires a byte register operand")
+    modrm = (3 << 6) | (row["grp"] << 3) | rm
+    imm = _imm_bytes(_parse_int(ops[1]), row["imm"])
+    return bytes([row["op"], modrm]) + disp + imm
+
+def _encode_grp_r8_noimm(row, ops):
+    mod, rm, disp = _parse_rm(ops[0])
+    if mod != 3:
+        raise CompileError("group op requires a byte register operand")
+    modrm = (3 << 6) | (row["grp"] << 3) | rm
+    return bytes([row["op"], modrm]) + disp
+
+def _encode_shift_r8_1(row, ops):
+    mod, rm, disp = _parse_rm(ops[0])
+    if mod != 3:
+        raise CompileError("shr requires a byte register operand")
+    if _parse_int(ops[1]) != 1:
+        raise CompileError("only shr r8,1 is supported "
+                           "(CL shifts not in subset)")
+    modrm = (3 << 6) | (row["grp"] << 3) | rm
+    return bytes([row["op"], modrm, 0x01])
 
 def _encode(mnem, operands, here, resolve):
     m = mnem.lower()
@@ -524,6 +578,36 @@ def stage_d_selftest():
         if assemble("cmp [bp+0],ax")["failures"] else True,
     }
 
+def stage_e_selftest():
+    jnb_img = assemble("jnb skip\nmov al,0x00\nskip:\nretf")
+    test_mem = assemble("test [bp+0],0x01")
+    return {
+        # F6 /0 ib (Grp3) register-r8 only
+        "e_test_al_imm": _enc("test al,0x40") == bytes.fromhex("F6C040"),
+        "e_test_bl_imm": _enc("test bl,0x01") == bytes.fromhex("F6C301"),
+        "e_test_mem_rejected": (
+            "unsupported" in test_mem["failures"][0])
+        if test_mem["failures"] else True,
+        # 32 /r (r8,rm8), KBDNMI byte-matched
+        "e_xor_ah_ah": _enc("xor ah,ah") == bytes.fromhex("32E4"),
+        "e_xor_bl_bl": _enc("xor bl,bl") == bytes.fromhex("32DB"),
+        # D0 /5 ib, immediate must be 1
+        "e_shr_bh_1": _enc("shr bh,1") == bytes.fromhex("D0EF01"),
+        "e_shr_imm2_rejected": (
+            "only shr r8,1" in assemble("shr bh,2")["failures"][0]),
+        # FE /0 and FE /1
+        "e_inc_ah": _enc("inc ah") == bytes.fromhex("FEC4"),
+        "e_inc_bl": _enc("inc bl") == bytes.fromhex("FEC3"),
+        "e_dec_ah": _enc("dec ah") == bytes.fromhex("FECC"),
+        # 0A /r (r8,rm8), KBDNMI OR BH,AL byte-matched
+        "e_or_bh_al": _enc("or bh,al") == bytes.fromhex("0AF8"),
+        # 86 /r (r8,rm8), KBDNMI XCHG AH,AL = 86E0
+        "e_xchg_ah_al": _enc("xchg ah,al") == bytes.fromhex("86E0"),
+        # jnb rel8 end-to-end
+        "e_jnb_emit": (
+            jnb_img["ok"] and jnb_img["data"][:2] == bytes.fromhex("7302")),
+    }
+
 def main(argv):
     if not argv or argv[0] == "selftest":
         r = assemble(IRPING_SRC)
@@ -541,6 +625,10 @@ def main(argv):
                 all_pass = False
             print(("PASS" if ok else "FAIL"), name)
         for name, ok in stage_d_selftest().items():
+            if not ok:
+                all_pass = False
+            print(("PASS" if ok else "FAIL"), name)
+        for name, ok in stage_e_selftest().items():
             if not ok:
                 all_pass = False
             print(("PASS" if ok else "FAIL"), name)
