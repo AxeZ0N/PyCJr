@@ -21,6 +21,10 @@ v6.1 additions (KBDNMI-core r8 shapes):
   - dec  r8      emits FE /1 (no immediate).
   - jnb / jnc    emit 73 rel8.
 
+selftest() returns the MERGED gate set (A + B + D + E) so that any
+caller of ASM.selftest() -- including the pcjr-tools MCP handler --
+sees every gate. Do not put Stage E in a separate function only.
+
 Grammar (strict):
     label:
     label: mnemonic operands
@@ -493,13 +497,27 @@ def assemble(src, verbose=False):
 def _enc(src):
     return assemble(src)["data"]
 
-def selftest():
-    r = assemble(IRPING_SRC)
-    return {
-        "asm_irping_exact": r["ok"] and r["data"] == bytes.fromhex(GOLDEN_HEX),
-        "data_block_exact": r["ok"] and r["data_block"] == GOLDEN_DATA.strip(),
+def _merged_selftest(r):
+    out = {
+        "asm_irping_exact": (
+            r["ok"] and r["data"] == bytes.fromhex(GOLDEN_HEX)),
+        "data_block_exact": (
+            r["ok"] and r["data_block"] == GOLDEN_DATA.strip()),
         "size_61": r["size"] == 61,
     }
+    out.update(stage_b_selftest())
+    out.update(stage_d_selftest())
+    out.update(stage_e_selftest())
+    return out
+
+def selftest():
+    """Merged A + B + D + E gate set.
+
+    This is the single entry point the pcjr-tools MCP handler calls
+    (ASM.selftest()). Every gate must live here so external callers
+    see the full set; do not leave Stage E out of this return value.
+    """
+    return _merged_selftest(assemble(IRPING_SRC))
 
 def stage_b_selftest():
     img = assemble(IRPING_SRC)
@@ -617,18 +635,6 @@ def main(argv):
             print("FAIL:", f)
         all_pass = True
         for name, ok in selftest().items():
-            if not ok:
-                all_pass = False
-            print(("PASS" if ok else "FAIL"), name)
-        for name, ok in stage_b_selftest().items():
-            if not ok:
-                all_pass = False
-            print(("PASS" if ok else "FAIL"), name)
-        for name, ok in stage_d_selftest().items():
-            if not ok:
-                all_pass = False
-            print(("PASS" if ok else "FAIL"), name)
-        for name, ok in stage_e_selftest().items():
             if not ok:
                 all_pass = False
             print(("PASS" if ok else "FAIL"), name)
