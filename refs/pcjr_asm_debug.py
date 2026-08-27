@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PCjr 8088 byte workbench (v5).
+"""PCjr 8088 byte workbench (v5.3).
 
 Pure stdlib. Holds the verified pure functions used to construct and
 check Cartridge BASIC machine-code images for the IBM PCjr. The MCP
@@ -11,6 +11,13 @@ Run the stage gates after a server restart:
 v5: handler-opcode coverage (iret, dec r16, push/pop r16, moffs A1/A3,
 mov r16,r/m16 8B, mov r/m8,imm8 C6), length-safe decode, tolerant hex
 input, and OOB-safe branch checks.
+v5.1: fail-fast decode (P1): unknown opcodes and unsupported group /N
+halt decode with a "; FAIL:" marker instead of falling back to db.
+v5.2: composite gate() folds selfloc + rel8/rel16 construction +
+branch verify + decode + optional byte compare + emit into one
+round-trip. P1 fail-fast decode retained.
+v5.3: 81 /7 iw decode (cmp r/m16,imm16) added. The gate decode-fail
+fixture gd switches from 81 to 63 so it still halts.
 """
 import json
 import re
@@ -153,9 +160,12 @@ REG8 = ["al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"]
 EA0 = ["[bx+si]", "[bx+di]", "[bp+si]", "[bp+di]", "[si]", "[di]", None, "[bx]"]
 
 OP1 = {0x0E: "push cs", 0x1F: "pop ds", 0xEC: "in al,dx",
-       0xCB: "retf", 0xCF: "iret"}
+       0xCB: "retf", 0x45: "inc bp", 0x4D: "dec bp",
+       0xCF: "iret",
+       }
 
-REL8 = {0x74: "je", 0x75: "jne", 0x74: "je", 0xEB: "jmp", 0xE2: "loop"}
+REL8 = {0x74: "je", 0x75: "jne", 0x72: "jc",
+        0xEB: "jmp", 0xE2: "loop"}
 
 IMM8 = {0x24: "and al,0x%02X", 0xB4: "mov ah,0x%02X",
         0xE4: "in al,0x%02X", 0xE6: "out 0x%02X,al",
@@ -165,9 +175,13 @@ IMM16 = {0xBA: "mov dx,0x%04X", 0xB9: "mov cx,0x%04X"}
 
 MNEMO = {0x89: "mov", 0x31: "xor", 0x39: "cmp", 0x85: "test"}
 
-MNEMO16_REG_RM = {0x8B: "mov"}   # MOV r16, r/m16 (reg = destination)
+MNEMO16_REG_RM = {0x8B: "mov",   # MOV r16, r/m16 (reg = destination)
+                  0x2B: "sub"}    # SUB r16, r/m16 (reg = destination)
+
 MNEMO8_RM_REG = {0x88: "mov"}    # MOV r/m8, r8
-MNEMO8_REG_RM = {0x3A: "cmp"}    # CMP r8, r/m8
+
+MNEMO8_REG_RM = {0x3A: "cmp",    # CMP r8, r/m8
+                 0x8A: "mov"}    # MOV r8, r/m8 (reg = destination)
 
 def _s8(v):
     return v - 256 if v >= 128 else v
@@ -185,8 +199,9 @@ def _need(data, off, n):
 def decode(data):
     """byte list -> [(offset, length, text)] for the verified subset.
 
-    Unknown opcodes fall back to a 1-byte `db` so the stream stays
-    aligned. Truncated trailing instructions are marked, never raised.
+    Fail-fast (v5.1): the first unknown opcode halts decode; the
+    remaining bytes are one entry with a "; FAIL:" marker. Truncated
+    trailing instructions are marked, never raised.
     """
     out, off, n = [], 0, len(data)
     while off < n:
@@ -254,11 +269,14 @@ def decode(data):
                 imm = _u16(data[off + 1], data[off + 2])
                 off += 3
                 text = f"mov {REGS16[b - 0xB8]},0x{imm:04X}"
-        elif b == 0x8D or b in MNEMO or b in (0x88, 0x3A, 0x80, 0x8B, 0xC6):
+        elif b == 0x8D or b in MNEMO or b in (0x88, 0x3A, 0x80, 0x8B, 0xC6,
+                                               0x2B, 0x8A, 0x81):
             off, text = _modrm(data, off)
         else:
-            text = f"db 0x{b:02X} ; outside verified subset"
-            off += 1
+            rest = "".join(f"{x:02X}" for x in data[start:])
+            off = n
+            text = (f"; FAIL: unknown opcode 0x{b:02X} at 0x{start:04X}, "
+                    f"decode halted (remaining {rest})")
         out.append((start, off - start, text))
     return out
 
@@ -320,8 +338,17 @@ def _modrm(data, off):
         p += 1
         if reg == 7:
             return p, f"cmp {rm_oper(True)},0x{imm:02X}"
-        # Unsupported group /N: consume imm8 so the stream stays aligned.
-        return p, f"db 0x80 ; group /{reg} unsupported"
+        return len(data), (f"; FAIL: 0x80 group /{reg} unsupported at "
+                           f"0x{off:04X}, decode halted")
+    if opcode == 0x81:
+        if not _need(data, p, 2):
+            return off + 1, "db 0x81 ; truncated (need imm16)"
+        imm = _u16(data[p], data[p + 1])
+        p += 2
+        if reg == 7:
+            return p, f"cmp {rm_oper(False)},0x{imm:04X}"
+        return len(data), (f"; FAIL: 0x81 group /{reg} unsupported at "
+                           f"0x{off:04X}, decode halted")
     if opcode == 0xC6:
         if not _need(data, p, 1):
             return off + 1, "db 0xC6 ; truncated (need imm8)"
@@ -329,9 +356,10 @@ def _modrm(data, off):
         p += 1
         if reg == 0:
             return p, f"mov {rm_oper(True)},0x{imm:02X}"
-        # Unsupported group /N: consume imm8 so the stream stays aligned.
-        return p, f"db 0xC6 ; group /{reg} unsupported"
-    return p, f"db 0x{opcode:02X} ; outside verified subset"
+        return len(data), (f"; FAIL: 0xC6 group /{reg} unsupported at "
+                           f"0x{off:04X}, decode halted")
+    return len(data), (f"; FAIL: unknown ModRM opcode 0x{opcode:02X} at "
+                       f"0x{off:04X}, decode halted")
 
 def branch_checks(data, checks):
     """Verify (insn_addr, target) pairs against decoded displacements."""
@@ -372,6 +400,134 @@ def branch_checks(data, checks):
                         "ok": actual == target})
     return {"ok": all(r["ok"] for r in reports), "checks": reports}
 
+def gate(hex_bytes, selfloc_at, pop_offset=6, base=128, checks=None,
+         expected_hex=None):
+    """Composite emission gate: construct, verify, and emit in one pass.
+
+    Two-phase contract:
+      - The assistant supplies a complete image with placeholder bytes
+        at every displacement site, plus (selfloc_at, branch checks)
+        that locate them.
+      - This function fills the selfloc displacement and every branch
+        displacement from the (at, target) list, then decodes, verifies
+        branches, optionally byte-compares, and emits the DATA block.
+
+    `hex_bytes` is never mutated; a copy is patched.
+
+    Returns one dict. Never raises.
+    """
+    data = _hex_or_error(hex_bytes)
+    data = list(data)
+    checks = list(checks or [])
+
+    # 1. Self-location site validation (hard stop on failure).
+    selfloc_report = {
+        "at": selfloc_at,
+        "pop_offset": pop_offset,
+        "base": base,
+        "ok": False,
+        "lea_hex": None,
+        "error": None,
+    }
+    if not (0 <= selfloc_at <= len(data) - 4):
+        selfloc_report["error"] = f"selfloc_at out of range: {selfloc_at}"
+    elif data[selfloc_at] != 0x8D or data[selfloc_at + 1] != 0xAE:
+        selfloc_report["error"] = (
+            f"expected 8D AE at 0x{selfloc_at:04X}, "
+            f"got {data[selfloc_at]:02X} {data[selfloc_at + 1]:02X}")
+    else:
+        sf = selfloc_full(pop_offset, base)
+        disp = sf["disp"]
+        data[selfloc_at + 2] = disp & 0xFF
+        data[selfloc_at + 3] = (disp >> 8) & 0xFF
+        selfloc_report["lea_hex"] = sf["lea_hex"]
+        selfloc_report["ok"] = True
+
+    if not selfloc_report["ok"]:
+        return {
+            "selfloc": selfloc_report,
+            "branches": [],
+            "branch_ok": False,
+            "branch": [],
+            "decode_ok": False,
+            "decode": [],
+            "check": None,
+            "patched_hex": None,
+            "data_block": None,
+            "gate_ok": False,
+        }
+
+    # 2. Branch displacement construction and patch (report, continue).
+    branch_reports = []
+    for at, target in checks:
+        rep = {"at": at, "target": target, "kind": None,
+               "disp_hex": None, "ok": False, "error": None}
+        if not (0 <= at < len(data)):
+            rep["error"] = "offset out of range"
+            branch_reports.append(rep)
+            continue
+        b = data[at]
+        if b in REL8:
+            if not _need(data, at, 2):
+                rep["error"] = "truncated (need 2)"
+                branch_reports.append(rep)
+                continue
+            d = rel8(at, target)[0]
+            data[at + 1] = d
+            rep["kind"] = "rel8"
+            rep["disp_hex"] = f"{d:02X}"
+            rep["ok"] = True
+        elif b == 0xE8:
+            if not _need(data, at, 3):
+                rep["error"] = "truncated (need 3)"
+                branch_reports.append(rep)
+                continue
+            lo, hi = rel16(at, target)
+            data[at + 1] = lo
+            data[at + 2] = hi
+            rep["kind"] = "rel16"
+            rep["disp_hex"] = f"{hi:02X}{lo:02X}"
+            rep["ok"] = True
+        else:
+            rep["error"] = f"opcode 0x{b:02X} is not a branch"
+        branch_reports.append(rep)
+
+    # 3. Decode the patched image; fail on unknown opcode or truncated tail.
+    dec = decode(data)
+    decode_ok = (sum(ln for _, ln, _ in dec) == len(data)
+                 and not any("FAIL" in t or "truncated" in t
+                             for _, _, t in dec))
+
+    # 4. Re-verify branch targets against the patched displacements.
+    br = branch_checks(data, checks)
+
+    # 5. Optional byte compare.
+    chk = None
+    chk_ok = True
+    if expected_hex is not None:
+        chk = check_detail(data, _hex_or_error(expected_hex))
+        chk_ok = chk["ok"]
+
+    # 6. Emit the final DATA block.
+    data_block = emit(data)
+
+    gate_ok = (selfloc_report["ok"]
+               and all(r["ok"] for r in branch_reports)
+               and decode_ok and br["ok"] and chk_ok)
+
+    return {
+        "selfloc": selfloc_report,
+        "branches": branch_reports,
+        "branch_ok": br["ok"],
+        "branch": br["checks"],
+        "decode_ok": decode_ok,
+        "decode": [(off, ln, t) for off, ln, t in dec],
+        "check": chk,
+        "patched_hex": "".join(f"{b:02X}" for b in data),
+        "data_block": data_block,
+        "gate_ok": gate_ok,
+    }
+
 def _raises(fn, args):
     try:
         fn(*args)
@@ -387,6 +543,13 @@ def selftest():
     dec = decode(g)
     p = patch(g, [(0x19, 0x00), (0x1A, 0x01)])
     c6 = decode([0xC6, 0x46, 0xD8, 0x07])
+    checks = [(0x27, 0x0033), (0x2E, 0x0031), (0x33, 0x001F)]
+    gk = gate(GOLDEN_HEX, 7, 6, 128, checks, GOLDEN_HEX)
+    gw = gate(GOLDEN_HEX, 0, 6, 128, checks, None)
+    gu = gate(GOLDEN_HEX, 7, 6, 128, [(0x00, 0x0000)], None)
+    gd = gate("0E1F55E800005D8DAE7A0063", 7, 6, 128, [], None)
+    gexp = "".join(f"{b:02X}" for b in patch(g, [(0x0C, 0x63)]))
+    ge = gate(GOLDEN_HEX, 7, 6, 128, checks, gexp)
     return {
         "parse_61": len(d) == 61 and d[0] == 0x0E and d[-1] == 0xCB,
         "parse_full": d == g,
@@ -448,6 +611,44 @@ def selftest():
         "hex_spaced": _hex_or_error("0E 1F") == [0x0E, 0x1F],
         "hex_prefixed": _hex_or_error("0x0E1F") == [0x0E, 0x1F],
         "hex_bad": _raises(_hex_or_error, ("0G",)),
+        # v5.1 S4 decode opcodes
+        "decode_sub_cx_ax": decode([0x2B, 0xC8])[0][2] == "sub cx,ax",
+        "decode_jc_rel8": decode([0x72, 0xFE])[0][2] == "jc 0x0000",
+        "decode_mov_ah_al": decode([0x8A, 0xE0])[0][2] == "mov ah,al",
+        "branch_jc": branch_checks([0x72, 0xFE], [(0, 0)])["ok"],
+        "decode_s4_group": [t for _, _, t in decode(
+            [0x2B, 0xC8, 0x72, 0xFE, 0x8A, 0xE0, 0x80, 0xFC, 0x03])] ==
+            ["sub cx,ax", "jc 0x0002", "mov ah,al", "cmp ah,0x03"],
+        # v5.1 P1 fail-fast decode
+        "decode_unknown_halts": (
+            len(decode([0x00])) == 1
+            and "FAIL" in decode([0x00])[0][2]),
+        # v5.3 81 /7 iw decode
+        "decode_81_rm_imm16": (
+            decode([0x81, 0x7E, 0x00, 0xDC, 0x00])[0][2]
+            == "cmp [bp+0x00],0x00DC"),
+        "decode_81_r16_imm16": (
+            decode([0x81, 0xF8, 0xDC, 0x00])[0][2] == "cmp ax,0x00DC"),
+        "decode_81_group_unsupported_halts": (
+            "FAIL" in decode([0x81, 0xC1, 0x07, 0x00])[0][2]),
+        "decode_80_group_unsupported_halts": (
+            "FAIL" in decode([0x80, 0xC1, 0x07])[0][2]),
+        "decode_c6_group_unsupported_halts": (
+            "FAIL" in decode([0xC6, 0xC9, 0x07])[0][2]),
+        # v5.2 composite gate
+        "gate_golden_ok": gk["gate_ok"] is True,
+        "gate_golden_exact": gk["patched_hex"] == GOLDEN_HEX,
+        "gate_golden_data": gk["data_block"] == GOLDEN_DATA.strip(),
+        "gate_wrong_site_fails": (gw["gate_ok"] is False
+                                   and gw["selfloc"]["error"] is not None),
+        "gate_bad_branch_fails": (gu["gate_ok"] is False
+                                  and gu["branches"][0]["error"] is not None),
+        "gate_decode_fail": (gd["gate_ok"] is False
+                             and gd["decode_ok"] is False),
+        "gate_expected_mismatch": (ge["gate_ok"] is False
+                                   and ge["check"] is not None
+                                   and ge["check"]["ok"] is False
+                                   and ge["decode_ok"] is True),
     }
 
 def _hex_or_error(txt):
@@ -506,10 +707,21 @@ def main(argv):
             a, t = s.split("=")
             checks.append((int(a, 0), int(t, 0)))
         print(json.dumps(branch_checks(data, checks), indent=2))
+    elif cmd == "gate":
+        hx = _hex_or_error(argv[1])
+        selfloc_at = int(argv[2], 0)
+        pop = int(argv[3], 0) if len(argv) > 3 else 6
+        base = int(argv[4], 0) if len(argv) > 4 else 128
+        checks = []
+        for s in argv[5:]:
+            a, t = s.split("=")
+            checks.append((int(a, 0), int(t, 0)))
+        print(json.dumps(gate(hx, selfloc_at, pop, base, checks), indent=2))
     else:
         print("usage: pcjr_asm_debug.py selftest|parse|decode|emit HEX|"
               "patch off=val...|check HEX [REF_HEX]|rel8 I T|rel16 I T|"
-              "selfloc POP [BASE]|branch HEX at=target ...")
+              "selfloc POP [BASE]|branch HEX at=target ...|"
+              "gate HEX SELFAT [POP] [BASE] [at=target ...]")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

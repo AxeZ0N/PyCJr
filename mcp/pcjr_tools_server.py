@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """pcjr-tools MCP server (v5).
 
-Exposes three dispatch tools over the local PCjr reference strip, the
-verified pcjr_asm_debug workbench, and the read-only repo grep engine:
+Exposes four dispatch tools over the local PCjr reference strip, the
+verified pcjr_asm_debug workbench, the pjasm encode-only assembler, and
+the read-only repo grep engine:
 
     search_ref  mode=query|peek|stats
     debug_asm   command=selftest|parse|emit|decode|patch|check|branch|
                 rel8|rel16|selfloc
+    pjasm       command=assemble|selftest
     grep_repo   mode=query|read|grep_all|stats|roots
 
 Each tool declares a required discriminator ("mode" / "command") so the
@@ -18,8 +20,8 @@ Endpoint:
 
 Environment variables:
     PCJR_REF_DIR   Directory containing deepseek_reference.txt,
-                   pcjr_ref_tool.py, pcjr_asm_debug.py, and
-                   pcjr_repo_grep.py.
+                   pcjr_ref_tool.py, pcjr_asm_debug.py, pcjrasm.py,
+                   and pcjr_repo_grep.py.
                    Defaults to <repo root>/refs (derived from this
                    file's location).
     PCJR_HOST      Bind host. Defaults to 127.0.0.1.
@@ -46,6 +48,7 @@ REF_DIR = os.environ.get("PCJR_REF_DIR", str(_REPO_ROOT / "refs"))
 REF_FILE = os.path.join(REF_DIR, "deepseek_reference.txt")
 REFTOOL_FILE = os.path.join(REF_DIR, "pcjr_ref_tool.py")
 ASM_FILE = os.path.join(REF_DIR, "pcjr_asm_debug.py")
+PJASM_FILE = os.path.join(REF_DIR, "pcjrasm.py")
 GREP_FILE = os.path.join(REF_DIR, "pcjr_repo_grep.py")
 
 sys.path.insert(0, REF_DIR)
@@ -61,8 +64,10 @@ try:
     import pcjr_ref_tool as REFTOOL
     import pcjr_asm_debug as ASM
     import pcjr_repo_grep as GREP
+    import pcjrasm as PJASM
 except ImportError as exc:
-    print("Missing pcjr_ref_tool.py, pcjr_asm_debug.py, or pcjr_repo_grep.py in PCJR_REF_DIR:", file=sys.stderr)
+    print("Missing pcjr_ref_tool.py, pcjr_asm_debug.py, pcjr_repo_grep.py, "
+          "or pcjrasm.py in PCJR_REF_DIR:", file=sys.stderr)
     print(f"  expected dir: {REF_DIR}", file=sys.stderr)
     print(f"  error: {exc}", file=sys.stderr)
     raise
@@ -241,6 +246,43 @@ def debug_asm(
     except ValueError as exc:
         return f"ERROR: {exc}"
 
+# --- pjasm ---------------------------------------------------------------
+
+@mcp.tool()
+def pjasm(
+    command: str,
+    text: Optional[str] = None,
+) -> str:
+    """pjasm encode-only assembler (closed-subset PCjr bridge).
+
+    command:
+        assemble  Assemble pjasm source -> size, budget_left, hex, data_block.
+                  Needs 'text'.
+        selftest  Run pjasm stage gates (Stage A/B/D + IRPING exact).
+    """
+    try:
+        if command == "assemble":
+            if text is None:
+                return "ERROR: command=assemble requires 'text'"
+            r = PJASM.assemble(text)
+            out = dict(r)
+            if r.get("data") is not None:
+                out["hex"] = "".join(f"{b:02X}" for b in r["data"])
+            out.pop("data", None)
+            return json.dumps(out, indent=2)
+        if command == "selftest":
+            results = {}
+            results.update(PJASM.selftest())
+            results.update(PJASM.stage_b_selftest())
+            results.update(PJASM.stage_d_selftest())
+            lines = [("PASS " if ok else "FAIL ") + name
+                     for name, ok in results.items()]
+            lines.append("ALL_PASS " + str(all(results.values())))
+            return "\n".join(lines)
+        return "ERROR: unknown command; valid: assemble|selftest"
+    except Exception as exc:
+        return f"ERROR: {exc}"
+
 # --- grep_repo ----------------------------------------------------------
 
 @mcp.tool()
@@ -289,6 +331,7 @@ def main() -> None:
     print(f"  reference strip: {REF_FILE}")
     print(f"  ref tool:        {REFTOOL_FILE}")
     print(f"  asm debugger:    {ASM_FILE}")
+    print(f"  pjasm:           {PJASM_FILE}")
     print(f"  repo grep:       {GREP_FILE}")
     print(f"  entries loaded:  {len(REFSTORE.pages)}")
     print(f"  endpoint:        http://{HOST}:{PORT_REF}/mcp")
