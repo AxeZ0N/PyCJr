@@ -461,3 +461,21 @@ result: st=3 rise=0xC330 trail=0xC0D8 burst=0x258 (600 counts=251.4us)
 result: PASS 2/2. Run 1: flag=2, r0=0xCDD0, r1=0xCA54, span 892 ct
 (373.8 us). Run 2: flag=2, r0=0xBB46, r1=0xB7C8, span 894 ct
 (374.6 us). Keyboard intact. loaded-106 gate observed.
+## 2026-08-27 · dec1_st2a_hw_pass · result
+{
+  "id": "DEC1_ST2A",
+  "source": "DEC1_ST2A.BAS",
+  "expected": {"return": "RETURNED OK", "status": "2 when PC0 seen", "pc6": "40"},
+  "result": {"return": "RETURNED OK", "status": 2, "pc6": "40", "kb": "intact", "loaded": "57"},
+  "verdict": "pass"
+}
+
+## 2026-08-27 · dec1_st2b_fail · result
+{
+  "id": "DEC1_ST2B",
+  "source": "DEC1_ST2B.BAS",
+  "expected": {"return": "RETURNED OK", "status": "3", "span": "~148 ct (120-180 window)"},
+  "result": {"return": "RETURNED OK", "spans": [334, 572, 572, 574, 574, 520, 520, 574], "no_stim": "status=0", "kb": "intact", "loaded": "92"},
+  "verdict": "fail",
+  "note": "trimodal AGC ripple; single-poll trailing edge insufficient"
+}

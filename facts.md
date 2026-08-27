@@ -1158,3 +1158,45 @@ pjasm rejects spaces inside memory operands: `lea bp,[bp + 122]` fails
 with `unsupported r/m operand`, while `lea bp,[bp+122]` assembles.
 Extends pjasm_operand_rules (2026-08-26), which covered literal forms
 and opcode names but not bracket spacing.
+## 2026-08-27 · dec1_st2a_pc0_latch · empirical
+
+DEC1_ST2A passed hardware 1/1: PC0 (`62h` bit 0, manual-verified
+"Keyboard Latched") is readable through the polling bridge. Arming =
+mask NMI (`OUT A0h,00h`), clear latch (dummy `IN A0h`), finite arm on
+PC0. At capture, PC6 read `40h` (HIGH), sanity-confirming the latch
+corresponds to a keyboard-data rising edge. Keyboard intact after
+restore `80h`. loaded-57 gate observed.
+
+## 2026-08-27 · dec1_st2b_trimodal_span · empirical
+
+DEC1_ST2B (single-poll start-burst trailing edge via CH0) produced 8
+stimulus spans in 3 modes: 334 ct (140 us, 1x), 520 ct (218 us, 2x),
+572/574 ct (240 us, 5x). No-stimulus control clean (`status=0`),
+ruling out Enter-tail contamination. CH0 is a down counter; span =
+t0 - t1 (mod 65536). The earlier first-pass wrap analysis was wrong and
+is retracted. The 240 us mode matches the known stretched start-burst
+envelope (S4B1_ST3B 220-251 us); 140/218 are sub-envelope, consistent
+with single-poll detection latching brief LOW ripple excursions inside
+the envelope HIGH.
+
+## 2026-08-27 · dec1_st2b_single_poll_ripple · analysis
+
+Root cause of the ST2B trimodal span: single-poll "wait first falling
+edge" has no confirmation step. KBDNMI (BIOS entry 338) uses
+single-poll for the candidate edge, then requires 4 consecutive LOW
+samples (`MOV CX,4`) before trusting it; any bounce back HIGH ->
+sync error, frame discarded. ST2B omitted that confirmation and
+therefore latched ripple dips (~22 us gap between 240 and 218 modes).
+Fix: port the 4x-consecutive-LOW confirmation before trusting the
+trailing edge.
+
+## 2026-08-27 · pjasm_missing_r8_shapes · decision
+
+pjasm v6.0 (refs/pcjrasm.py) table is narrower than the stated
+pjasm_boundary implied. Missing shapes needed for a 1:1 KBDNMI-core
+port: `test r8,imm`, `xor r8,r8`, `shr r8,1`, `inc r8`, `dec r8`,
+`or r8,r8`, `xchg ah,al`, `jnb`. A faithful KBDNMI core (5x majority
+halves, opposite-halves, odd parity via r8 bit ops) is not expressible
+in pjasm today. Decision (user): extend pjasm with the missing r8
+shapes; those opcodes are known to run on this hardware. Next session =
+pjasm extension, then ST2C KBDNMI-core on CH0.
