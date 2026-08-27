@@ -1042,3 +1042,27 @@ process violation; three S4A drafts with hand-rolled displacements
 failed decode and were rejected before reaching hardware. This closes
 the ch0cal_cmp38_ungated-class gap: every new stage now runs the full
 per-branch gate.
+## 2026-08-26 · pjasm_v6_table_driven · decision
+
+pjasm = refs/pcjrasm.py, encode-only. One instruction table drives
+five encoder kinds (fixed/reg16/imm8/rel/modrm+grp); no per-opcode
+branches. Decoder deliberately lives in refs/pcjr_asm_debug.py, not
+here. IRPING assembles byte-exact, 61 bytes.
+
+## 2026-08-26 · grp1_81_pjasm_encode · decision
+
+81 /7 iw is two pjasm rows: (cmp,rm,imm) and (cmp,r16,imm). Encode
+verified byte-exact. debug_asm decode still FAILs on 81 (P1 fail-fast,
+no decode row). S4B CH0 grid unblocked on encode side only.
+
+## 2026-08-26 · modrm_bp_irregularity · analysis
+
+mod=0 rm=6 means disp16, not [bp]; [bp] is forced to mod=1 disp8=0;
+LEA bp,[bp+disp] must always emit mod=2 disp16. The size=60 defect was
+the generic encoder shrinking LEA to mod=1. Encoded as LEA16 special.
+
+## 2026-08-26 · pjasm_debug_integration · decision
+
+refs/test_pjasm_integration.py proves the local boundary: pjasm output
+-> debug_asm decode/branch_checks/check. 9/9. No MCP, no anchors, no
+hardware.
