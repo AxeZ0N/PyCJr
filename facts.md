@@ -1066,3 +1066,26 @@ the generic encoder shrinking LEA to mod=1. Encoded as LEA16 special.
 refs/test_pjasm_integration.py proves the local boundary: pjasm output
 -> debug_asm decode/branch_checks/check. 9/9. No MCP, no anchors, no
 hardware.
+## 2026-08-26 · debug_asm_v53_81_decode · decision
+supersedes: 2026-08-26 · grp1_81_pjasm_encode · decision
+
+`debug_asm` v5.3 adds `81 /7 iw` decode to the verified subset.
+`cmp r/m16,imm16` decodes for both memory and register forms:
+`81 7E 00 DC 00` -> `cmp [bp+0x00],0x00DC`, `81 F8 DC 00` ->
+`cmp ax,0x00DC`. Unsupported group /N still halts decode (P1
+fail-fast). The gate decode-fail fixture `gd` switches from `81` to
+`63` so it still exercises the fail path after `81` became decodable.
+Selftest ALL_PASS True (MCP-verified). This closes the S4B CH0-grid
+gap: the `81 /7 iw` compare required for the 220us CH0 grid now
+passes the full emission gate.
+
+## 2026-08-26 · pjasm_mcp_tool · decision
+
+`pcjr-tools` now exposes a fourth tool, `pjasm`, with
+`command=assemble|selftest`. It imports `refs/pcjrasm.py` as `PJASM`
+and keeps the encode-only boundary: `assemble` returns
+`size`, `budget_left`, `hex`, and `data_block`; `selftest` runs Stage
+A/B/D + IRPING byte-exact (57/57 ALL_PASS True, MCP-verified).
+Decoder stays in `refs/pcjr_asm_debug.py` via `debug_asm`. The MCP
+server imports `pcjrasm.py` from `PCJR_REF_DIR`, so the file must
+ship alongside the other refs.
