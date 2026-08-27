@@ -1089,3 +1089,47 @@ A/B/D + IRPING byte-exact (57/57 ALL_PASS True, MCP-verified).
 Decoder stays in `refs/pcjr_asm_debug.py` via `debug_asm`. The MCP
 server imports `pcjrasm.py` from `PCJR_REF_DIR`, so the file must
 ship alongside the other refs.
+## 2026-08-26 · s4b1_raised_ceiling · decision
+
+Machine-code ceiling raised from 128 to 180 bytes. Result region moves
+from O+128 to O+180; selfloc LEA displacement becomes 174 (0xAE) because
+`lea bp,[bp+174]` = entry+180. BASIC PEEKs at `VARPTR(A(0))+180..187`.
+Verified via debug_asm selfloc (base=180 -> disp 174, 8D AE AE 00) and
+hardware stage-1 sentinel pass. Stage code must end at offset <= 180.
+
+## 2026-08-26 · ch0_down_counter · empirical
+
+8253 CH0 counts DOWN. Elapsed between a latching read at time A and a
+later latching read at time B is `A - B`, positive. Three runs measured
+the start-burst envelope high as 526, 578, and 600 counts (220.4, 242.2,
+251.4 us). Latch path per CH0CAL: `mov al,0 / out 43h,al / in al,40h` (lo)
+`/ in al,40h` (hi). Never bare IN on a counter port.
+
+## 2026-08-26 · s4b1_stage3b_boundary · empirical
+
+S4B1_ST3B (180B instrumented probe) passed hardware clean: st=3,
+rise=0xC330, trail=0xC0D8, burst=0x258 (600 counts = 251.4us), half=0,
+keyboard intact. Fixed 740-count (0x2E4 = 310us) anchor from the start
+burst trailing edge samples the start-silence/bit0 boundary and
+flip-flops: S4A (LOOP CX=90, same nominal offset) returned half=1 for
+'h', stage3b (CH0 anchor) returned half=0. Run-to-run envelope variance
+(~30us) moves the sample point across the boundary. Fixed grid retired
+as a decode primitive.
+
+## 2026-08-26 · fixed_ch0_grid_retired · decision
+
+S4B's locked CH0 fixed-grid decode approach is retired. The AGC envelope
+stretches the nominal 62us start burst to ~220-250us with ~30us run
+variance, so no fixed timing offset from the start burst reaches bit0's
+center reliably. Next decode attempt must be edge-driven: detect bit0's
+own rising edge and sample relative to that edge, per bit.
+
+## 2026-08-26 · pjasm_operand_rules · analysis
+
+pjasm (refs/pcjrasm.py) operand constraints observed this session:
+rejects `mov byte [bp+n],imm` (use load/store pairs), rejects `jb`
+(use `jc`), rejects `out dx,al` (use `out imm,al`), rejects trailing-h
+literals `0AAh` (use `0xAA` or decimal), rejects `in al,0A0h` written as
+`0A0h` literal (use `0xA0`), enforces rel8 range -128..127 (use a
+two-hop jmp for distant targets). `81 /7 iw` (cmp r/m16,imm16) encodes
+and decodes correctly.

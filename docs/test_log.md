@@ -417,3 +417,32 @@ contract: {"id":"S4A","source":"S4A.BAS v2 (112B, LOOP-timing)",
 "regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
 result: PASS. h press: st=3, half=1 (predicted first data bit of
 0x23). Keyboard alive. Run via --run_test.
+## 2026-08-26 · s4b1_stage1_pass · result
+
+contract: {"id":"S4B1-stage1","source":"S4B1.BAS stage1 (39B)",
+  "expected":{"return":"RETURNED OK","st":"&HAA","bit0":"&HBB",
+  "bit1":"&HCC","biphase_ok":"&HDD","keyboard_after":"intact"},
+  "regression":"IRPING -> S4A","recovery":"cold_power_cycle"}
+result: loaded=39, returned ok, st=&HAA bit0=&HBB bit1=&HCC
+  biphase=&HDD, keyboard intact. PASS.
+
+## 2026-08-26 · s4b1_stage2_ch0_live · result
+
+contract: {"id":"S4B1-stage2","source":"S4B1_stage2.BAS (103B)",
+  "expected":{"return":"RETURNED OK","st":"2","rise/trail stored",
+  "delta_nonzero":"1","keyboard_after":"intact"},
+  "regression":"IRPING -> S4A","recovery":"cold_power_cycle"}
+result: st=2 rise=0x4DE6 trail=0x4BA4 burst=0x242 (578 counts=242.2us)
+  and an earlier run burst=526 counts=220.4us. CH0 latch/read works
+  under NMI mask during live frame; keyboard intact. PASS.
+
+## 2026-08-26 · s4b1_stage3b_boundary · result
+
+contract: {"id":"S4B1-stage3b","source":"S4B1_stage3b.BAS (180B)",
+  "expected":{"return":"RETURNED OK","st":"3","half":"0|1",
+  "rise/trail/burst reported","keyboard_after":"intact"},
+  "regression":"IRPING -> S4A","recovery":"cold_power_cycle"}
+result: st=3 rise=0xC330 trail=0xC0D8 burst=0x258 (600 counts=251.4us)
+  half=0, keyboard intact. Fixed 740-anchor samples the bit0 boundary
+  and disagrees with S4A's half=1 at the same nominal offset. Negative
+  result for fixed grid; edge-sync is the next path. RECORDED.
