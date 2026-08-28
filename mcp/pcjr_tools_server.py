@@ -1,42 +1,116 @@
 #!/usr/bin/env python3
-"""pcjr-tools MCP server (v5).
-
-Exposes four dispatch tools over the local PCjr reference strip, the
-verified pcjr_asm_debug workbench, the pjasm encode-only assembler, and
-the read-only repo grep engine:
-
-    search_ref  mode=query|peek|stats
-    debug_asm   command=selftest|parse|emit|decode|patch|check|branch|
-                rel8|rel16|selfloc
-    pjasm       command=assemble|selftest
-    grep_repo   mode=query|read|grep_all|stats|roots
-
-Each tool declares a required discriminator ("mode" / "command") so the
-BDS MCP client never drops them. The reference strip and repo are loaded
-read-only; nothing leaves this machine.
-
-Endpoint:
-    /mcp   streamable HTTP (FastMCP streamable_http_app)
-
-Environment variables:
-    PCJR_REF_DIR   Directory containing deepseek_reference.txt,
-                   pcjr_ref_tool.py, pcjr_asm_debug.py, pcjrasm.py,
-                   and pcjr_repo_grep.py.
-                   Defaults to <repo root>/refs (derived from this
-                   file's location).
-    PCJR_HOST      Bind host. Defaults to 127.0.0.1.
-    PCJR_PORT_REF  Bind port. Defaults to 8765.
-
-Register a single server named "pcjr-tools" pointing at
-http://localhost:8765/mcp in Better DeepSeek.
 """
+pcjr-tools MCP server — integrated guide for PCjr machine-code design. (v8)
+
+This server exposes three tools that together support the full
+PCjr Cartridge BASIC machine-code design and validation loop:
+
+    search_ref   Query the digitized IBM PCjr Technical Reference strip.
+    grep_repo    Search the PyCJr repository fact layer (facts.md, sessions/, docs/).
+    jr           Assemble, lint, extract, and verify bridge machine code.
+
+Use all three in concert:
+  1. Retrieve manual facts with search_ref.
+  2. Retrieve repo decisions with grep_repo.
+  3. Build and validate machine code with jr.
+
+All file paths in the jr tool are relative to the repository root.
+
+--- search_ref ---
+Search the IBM PCjr Technical Reference strip (noisy OCR).
+
+mode:
+    query   English prose search. Needs 'query'.
+            Optional: context (default 3), max_pages (default 1).
+    peek    Raw entries by 1-based file position. Needs 'start' >= 1.
+            Optional: end.
+    stats   Diagnostic statistics. Optional: verbose (omit or true).
+
+--- grep_repo ---
+Read-only repo search over facts.md, sessions/, and docs/ (plus whole
+repo for read/grep_all). A match is evidence, not automatically a fact.
+
+mode:
+    query     Fact-layer regex search. Needs 'query'.
+              Optional: context (default 2), literal (default false).
+    stats     Fact-layer file/line counts.
+    roots     Which fact-layer roots exist.
+    read      Full file by root-relative path, whole repo (text only,
+              hidden paths refused). Needs 'path'. JSON return.
+    grep_all  Regex search across whole repo (text files only, hidden
+              paths refused). Needs 'query'. JSON return; capped by
+              max_matches (default 50).
+
+--- jr ---
+PCjr bridge machine-code pipeline: assemble, lint, extract, verify.
+
+The routine must satisfy the bridge contract:
+    - Entry prefix 0E 1F 55: push cs / pop ds / push bp
+    - Epilogue 5D CB: pop bp / retf
+    - Exactly one far RETF (CB)
+    - Self-location: call get_ip / pop bp / lea bp,[bp+R-6]
+    - Results stored at O+R; BASIC reads them via PEEK(VARPTR(A(0))+R)
+    - If port A0h or 62h is touched, restore NMI before RETF with:
+      IN AL,0A0h (clear latch), then OUT 0A0h,80h
+
+command:
+    build    Assemble SRC.asm with UASM, lint, then write SRC.bin,
+             SRC.data, and SRC.bas next to src. Needs 'src'.
+             Optional: stage (default 6), result (auto if omitted),
+             ceiling (default 180), rules (path to JSON rule file),
+             strict, uasm (default "uasm"), keep.
+             On success returns JSON with keys: status, bin_hex,
+             data_block, bas_source, errors, warnings.
+
+    lint     Lint FILE.bin against the stage-gated rule set.
+             Needs 'binfile'.
+             Optional: stage (default 6), result (REQUIRED if selfloc
+             rule is active), ceiling (default 180), rules, strict.
+             Returns JSON: {"status": "pass"|"warn",
+             "errors": [], "warnings": []}.
+             A non-pass result is returned as an error string.
+
+    verify   Compare .bas DATA bytes to .bin bytes. Needs 'bas' and 'bin'.
+             Returns JSON: {"match": bool, "expected_size": int,
+             "actual_size": int, "mismatches": [{"offset": int,
+             "expected": int|null, "actual": int|null}]}.
+
+    golden   Extract DATA bytes from .bas and write a binary file.
+             Needs 'bas'. Optional: out (default NAME.golden.bin).
+
+    dis      Disassemble FILE.bin with ndisasm. Needs 'binfile'.
+
+    data     Emit BASIC DATA lines from FILE.bin. Needs 'binfile'.
+
+    parse    Extract DATA bytes from .bas and return hex or write to
+             'out'. Needs 'bas'. Optional: out.
+
+Errors from jr are returned as: "ERROR (exit N):\n<message>".
+
+--- Recommended design/validation workflow ---
+  1. Retrieve before emit:
+       - Use search_ref for manual facts (ports, bits, vectors).
+       - Use grep_repo for repo facts/decisions and session ground truth.
+  2. Construct bytes:
+       - Prefer pjasm / debug_asm tools. Never hand-roll rel8/rel16.
+       - Or assemble a complete source with jr build.
+  3. Lint the generated binary:
+       - jr lint FILE.bin --stage N --result R
+       - If selfloc rule is active, result is required.
+  4. Verify against anchors:
+       - jr golden ANCHOR.BAS --out /tmp/anchor.bin
+       - jr lint /tmp/anchor.bin --stage 6 --result R
+       - jr verify ANCHOR.BAS ANCHOR.bin
+  5. Gate each stage before advancing.
+       - If a stage fails, fix only that stage and re-run.
+       - If transport is suspect, regress with IRPING first.
+"""
+
 import json
 import os
 import sys
 from pathlib import Path
 from typing import Optional
-
-from pydantic import BaseModel
 
 _SERVER_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SERVER_DIR.parent
@@ -47,11 +121,12 @@ PORT_REF = int(os.environ.get("PCJR_PORT_REF", "8765"))
 REF_DIR = os.environ.get("PCJR_REF_DIR", str(_REPO_ROOT / "refs"))
 REF_FILE = os.path.join(REF_DIR, "deepseek_reference.txt")
 REFTOOL_FILE = os.path.join(REF_DIR, "pcjr_ref_tool.py")
-ASM_FILE = os.path.join(REF_DIR, "pcjr_asm_debug.py")
-PJASM_FILE = os.path.join(REF_DIR, "pcjrasm.py")
 GREP_FILE = os.path.join(REF_DIR, "pcjr_repo_grep.py")
+JR_TOOLS_DIR = os.path.join(REF_DIR, "jr-tools")
 
+# Add both refs and refs/jr-tools to sys.path
 sys.path.insert(0, REF_DIR)
+sys.path.insert(0, JR_TOOLS_DIR)
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -62,13 +137,12 @@ except ImportError:
 
 try:
     import pcjr_ref_tool as REFTOOL
-    import pcjr_asm_debug as ASM
     import pcjr_repo_grep as GREP
-    import pcjrasm as PJASM
+    import jr as JR
 except ImportError as exc:
-    print("Missing pcjr_ref_tool.py, pcjr_asm_debug.py, pcjr_repo_grep.py, "
-          "or pcjrasm.py in PCJR_REF_DIR:", file=sys.stderr)
-    print(f"  expected dir: {REF_DIR}", file=sys.stderr)
+    print("Missing pcjr_ref_tool.py, pcjr_repo_grep.py, or jr.py in PCJR_REF_DIR:", file=sys.stderr)
+    print(f"  expected ref dir: {REF_DIR}", file=sys.stderr)
+    print(f"  expected jr-tools dir: {JR_TOOLS_DIR}", file=sys.stderr)
     print(f"  error: {exc}", file=sys.stderr)
     raise
 
@@ -124,165 +198,6 @@ def search_ref(
     except ValueError as exc:
         return f"ERROR: {exc}"
 
-# --- debug_asm ----------------------------------------------------------
-
-class PatchItem(BaseModel):
-    offset: int
-    value: int
-
-class BranchCheck(BaseModel):
-    at: int
-    target: int
-
-@mcp.tool()
-def debug_asm(
-    command: str,
-    mode: str = "all",
-    text: Optional[str] = None,
-    hex_bytes: Optional[str] = None,
-    expected_hex: Optional[str] = None,
-    patches: Optional[list[PatchItem]] = None,
-    checks: Optional[list[BranchCheck]] = None,
-    insn: Optional[int] = None,
-    target: Optional[int] = None,
-    pop_offset: Optional[int] = None,
-    base: int = 128,
-    wrap: int = 11,
-) -> str:
-    """8088 byte workbench (command dispatch). Byte construction source of truth.
-
-    command:
-        selftest  Run all stage gates against the frozen IRPING image.
-        parse     Parse a BASIC DATA block -> hex bytes. Needs 'text'.
-        emit      Emit hex bytes as a DATA block. Needs 'hex_bytes'.
-        decode    Disassemble for the verified 8088 subset. Needs 'hex_bytes'.
-        patch     Apply (offset,value) patches; returns DATA block.
-                  Needs 'hex_bytes' and 'patches'.
-        check     Compare to IRPING golden or 'expected_hex'. Needs 'hex_bytes'.
-        branch    Verify (at,target) pairs against decoded displacements.
-                  Needs 'hex_bytes' and 'checks'.
-        rel8      Signed rel8 displacement. Needs 'insn' and 'target'.
-        rel16     Signed rel16 displacement. Needs 'insn' and 'target'.
-        selfloc   Full self-location instruction. Needs 'pop_offset' (base=128).
-    """
-    try:
-        if command == "selftest":
-            results = ASM.selftest()
-            lines = [("PASS " if ok else "FAIL ") + name for name, ok in results.items()]
-            lines.append("ALL_PASS " + str(all(results.values())))
-            return "\n".join(lines)
-
-        if command == "parse":
-            if text is None:
-                return "ERROR: command=parse requires 'text'"
-            data = ASM.parse(text)
-            return "".join(f"{b:02X}" for b in data)
-
-        if command == "emit":
-            if hex_bytes is None:
-                return "ERROR: command=emit requires 'hex_bytes'"
-            data = ASM._hex_or_error(hex_bytes)
-            return ASM.emit(data, wrap=wrap)
-
-        if command == "decode":
-            if hex_bytes is None:
-                return "ERROR: command=decode requires 'hex_bytes'"
-            data = ASM._hex_or_error(hex_bytes)
-            out = []
-            for off, ln, text_ in ASM.decode(data):
-                hx = "".join(f"{b:02X}" for b in data[off:off + ln])
-                out.append(f"{off:04X}: {hx:<9} {text_}")
-            return "\n".join(out)
-
-        if command == "patch":
-            if hex_bytes is None or patches is None:
-                return "ERROR: command=patch requires 'hex_bytes' and 'patches'"
-            data = ASM._hex_or_error(hex_bytes)
-            patch_list = [(p.offset, p.value) for p in patches]
-            return ASM.emit(ASM.patch(data, patch_list))
-
-        if command == "check":
-            if hex_bytes is None:
-                return "ERROR: command=check requires 'hex_bytes'"
-            actual = ASM._hex_or_error(hex_bytes)
-            expected = (
-                ASM._hex_or_error(expected_hex)
-                if expected_hex
-                else list(bytes.fromhex(ASM.GOLDEN_HEX))
-            )
-            return json.dumps(ASM.check_detail(actual, expected), indent=2)
-
-        if command == "branch":
-            if hex_bytes is None or checks is None:
-                return "ERROR: command=branch requires 'hex_bytes' and 'checks'"
-            data = ASM._hex_or_error(hex_bytes)
-            check_list = [(c.at, c.target) for c in checks]
-            return json.dumps(ASM.branch_checks(data, check_list), indent=2)
-
-        if command == "rel8":
-            if insn is None or target is None:
-                return "ERROR: command=rel8 requires 'insn' and 'target'"
-            b = ASM.rel8(insn, target)
-            return json.dumps({
-                "insn": insn, "target": target, "next_ip": insn + 2,
-                "disp": target - (insn + 2), "bytes": b,
-            }, indent=2)
-
-        if command == "rel16":
-            if insn is None or target is None:
-                return "ERROR: command=rel16 requires 'insn' and 'target'"
-            b = ASM.rel16(insn, target)
-            return json.dumps({
-                "insn": insn, "target": target, "next_ip": insn + 3,
-                "disp": target - (insn + 3), "bytes": b,
-            }, indent=2)
-
-        if command == "selfloc":
-            if pop_offset is None:
-                return "ERROR: command=selfloc requires 'pop_offset'"
-            return json.dumps(ASM.selfloc_full(pop_offset, base), indent=2)
-
-        return "ERROR: unknown command; valid: selftest|parse|emit|decode|patch|check|branch|rel8|rel16|selfloc"
-    except ValueError as exc:
-        return f"ERROR: {exc}"
-
-# --- pjasm ---------------------------------------------------------------
-
-@mcp.tool()
-def pjasm(
-    command: str,
-    text: Optional[str] = None,
-) -> str:
-    """pjasm encode-only assembler (closed-subset PCjr bridge).
-
-    command:
-        assemble  Assemble pjasm source -> size, budget_left, hex, data_block.
-                  Needs 'text'.
-        selftest  Run pjasm stage gates (Stage A/B/D + IRPING exact).
-    """
-    try:
-        if command == "assemble":
-            if text is None:
-                return "ERROR: command=assemble requires 'text'"
-            r = PJASM.assemble(text)
-            out = dict(r)
-            if r.get("data") is not None:
-                out["hex"] = "".join(f"{b:02X}" for b in r["data"])
-            out.pop("data", None)
-            return json.dumps(out, indent=2)
-        if command == "selftest":
-            results = {}
-            results.update(PJASM.selftest())
-            results.update(PJASM.stage_b_selftest())
-            results.update(PJASM.stage_d_selftest())
-            lines = [("PASS " if ok else "FAIL ") + name
-                     for name, ok in results.items()]
-            lines.append("ALL_PASS " + str(all(results.values())))
-            return "\n".join(lines)
-        return "ERROR: unknown command; valid: assemble|selftest"
-    except Exception as exc:
-        return f"ERROR: {exc}"
-
 # --- grep_repo ----------------------------------------------------------
 
 @mcp.tool()
@@ -326,13 +241,146 @@ def grep_repo(
     except Exception as exc:
         return f"ERROR: {exc}"
 
+# --- jr -----------------------------------------------------------------
+
+@mcp.tool()
+def jr(
+    command: str,
+    src: Optional[str] = None,
+    binfile: Optional[str] = None,
+    bas: Optional[str] = None,
+    bin: Optional[str] = None,
+    out: Optional[str] = None,
+    stage: Optional[int] = None,
+    result: Optional[int] = None,
+    ceiling: Optional[int] = None,
+    rules: Optional[str] = None,
+    strict: bool = False,
+    uasm: Optional[str] = None,
+    keep: bool = False,
+) -> str:
+    """PCjr bridge byte pipeline (assemble, lint, verify, data, parse, dis).
+
+    command:
+        build    Assemble SRC.asm -> .bin, lint, emit .data and .bas.
+                 Needs 'src'. Optional: stage, result, ceiling, rules,
+                 strict, uasm, keep.
+        lint     Lint FILE.bin. Needs 'binfile'. Optional: stage, result,
+                 ceiling, rules, strict.
+        verify   Compare .bas DATA to .bin. Needs 'bas' and 'bin'.
+        golden   Extract bytes from .bas to a .bin file. Needs 'bas'.
+                 Optional: out (default NAME.golden.bin).
+        dis      Disassemble FILE.bin with ndisasm. Needs 'binfile'.
+        data     Emit DATA lines from FILE.bin. Needs 'binfile'.
+        parse    Extract bytes from .bas DATA. Needs 'bas'.
+                 Optional: out (default stdout).
+    """
+    try:
+        if command == "build":
+            if not src:
+                return "ERROR: command=build requires 'src'"
+            with open(src, 'r') as f:
+                asm_text = f.read()
+            res = JR.build(
+                asm_text,
+                stage=stage if stage is not None else 6,
+                result=result,
+                ceiling=ceiling if ceiling is not None else 180,
+                rules=rules,
+                strict=strict,
+                uasm=uasm or "uasm",
+            )
+            # Write outputs (same as CLI)
+            base = os.path.splitext(src)[0]
+            bin_path = base + ".bin"
+            data_path = base + ".data"
+            bas_path = base + ".bas"
+            with open(bin_path, 'wb') as f:
+                f.write(bytes.fromhex(res["bin_hex"]))
+            with open(data_path, 'w') as f:
+                f.write(res["data_block"])
+            with open(bas_path, 'w') as f:
+                f.write(res["bas_source"])
+            return json.dumps(res, indent=2)
+
+        elif command == "lint":
+            if not binfile:
+                return "ERROR: command=lint requires 'binfile'"
+            with open(binfile, 'rb') as f:
+                bin_hex = f.read().hex().upper()
+            res = JR.lint(
+                bin_hex,
+                stage=stage if stage is not None else 6,
+                result=result,
+                ceiling=ceiling if ceiling is not None else 180,
+                rules=rules,
+                strict=strict,
+            )
+            return json.dumps(res, indent=2)
+
+        elif command == "verify":
+            if not bas or not bin:
+                return "ERROR: command=verify requires 'bas' and 'bin'"
+            with open(bas, 'r') as f:
+                bas_text = f.read()
+            with open(bin, 'rb') as f:
+                bin_hex = f.read().hex().upper()
+            res = JR.verify(bas_text, bin_hex)
+            return json.dumps(res, indent=2)
+
+        elif command == "golden":
+            if not bas:
+                return "ERROR: command=golden requires 'bas'"
+            with open(bas, 'r') as f:
+                bas_text = f.read()
+            hex_out = JR.golden(bas_text)
+            out_path = out if out else os.path.splitext(bas)[0] + ".golden.bin"
+            with open(out_path, 'wb') as f:
+                f.write(bytes.fromhex(hex_out))
+            return f"golden: wrote {len(hex_out)//2} bytes to {out_path}"
+
+        elif command == "dis":
+            if not binfile:
+                return "ERROR: command=dis requires 'binfile'"
+            with open(binfile, 'rb') as f:
+                bin_hex = f.read().hex().upper()
+            return JR.dis(bin_hex)
+
+        elif command == "data":
+            if not binfile:
+                return "ERROR: command=data requires 'binfile'"
+            with open(binfile, 'rb') as f:
+                bin_hex = f.read().hex().upper()
+            return JR.data(bin_hex)
+
+        elif command == "parse":
+            if not bas:
+                return "ERROR: command=parse requires 'bas'"
+            with open(bas, 'r') as f:
+                bas_text = f.read()
+            hex_out = JR.parse(bas_text)
+            if out:
+                with open(out, 'wb') as f:
+                    f.write(bytes.fromhex(hex_out))
+                return f"parse: wrote {len(hex_out)//2} bytes to {out}"
+            return hex_out
+
+        else:
+            return f"ERROR: unknown command '{command}'; valid: build|lint|verify|golden|dis|data|parse"
+
+    except JR.JrError as exc:
+        return f"ERROR (exit {exc.exit_code}):\n{exc}"
+    except FileNotFoundError as exc:
+        return f"ERROR: file not found: {exc}"
+    except Exception as exc:
+        return f"ERROR: {exc}"
+
 def main() -> None:
     print("pcjr-tools MCP server")
     print(f"  reference strip: {REF_FILE}")
     print(f"  ref tool:        {REFTOOL_FILE}")
-    print(f"  asm debugger:    {ASM_FILE}")
-    print(f"  pjasm:           {PJASM_FILE}")
     print(f"  repo grep:       {GREP_FILE}")
+    print(f"  jr module:       {os.path.join(JR_TOOLS_DIR, 'jr.py')}")
     print(f"  entries loaded:  {len(REFSTORE.pages)}")
     print(f"  endpoint:        http://{HOST}:{PORT_REF}/mcp")
     print("Press Ctrl+C to stop.")
