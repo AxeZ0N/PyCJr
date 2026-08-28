@@ -1,0 +1,645 @@
+#!/usr/bin/env python3
+"""
+jr - PCjr bridge byte pipeline
+Implements the jr tool as specified in docs/jr_tool_spec.md
+"""
+
+import sys
+import os
+import subprocess
+import tempfile
+import argparse
+import json
+import re
+import shutil
+from pathlib import Path
+
+# ------------------------------------------------------------
+# Default paths
+RULES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jr_rules.json")
+LOADER_TEMPLATE = """\
+10 DEFINT A-Z
+20 DIM A(__DIM__)
+30 I = 0 : O = 0 : X$ = "" : B = 0 : D = 0
+40 ST = 0 : RI = 0 : FA = 0
+50 I = 0
+60 READ D
+70 IF D = -1 THEN 110
+80 POKE VARPTR(A(0)) + I, D
+90 I = I + 1
+100 GOTO 60
+110 PRINT "Loaded "; I; " bytes. Press Enter to CALL..."
+120 INPUT X$
+130 O = VARPTR(A(0))
+140 CALL O
+150 PRINT "RETURNED OK"
+160 ST = PEEK(VARPTR(A(0)) + __RESULT__)
+170 RI = PEEK(VARPTR(A(0)) + __RESULT__ + 2) + 256! * PEEK(VARPTR(A(0)) + __RESULT__ + 3)
+180 FA = PEEK(VARPTR(A(0)) + __RESULT__ + 4) + 256! * PEEK(VARPTR(A(0)) + __RESULT__ + 5)
+190 PRINT "status="; ST; " rising="; RI; " falling="; FA
+200 END
+"""
+
+# ------------------------------------------------------------
+# Utility functions
+
+def hex_to_bytes(hexstr):
+    """Convert a hex string (with possible separators, &H, 0x) to bytes."""
+    # Remove all non-hex characters
+    clean = re.sub(r'[^0-9a-fA-F]', '', hexstr)
+    if len(clean) % 2 != 0:
+        raise ValueError(f"Odd-length hex string: {hexstr}")
+    return bytes.fromhex(clean)
+
+def bytes_to_hex(b):
+    """Convert bytes to uppercase hex string without separators."""
+    return b.hex().upper()
+
+def normalize_pattern(p):
+    """Normalize a pattern string from JSON to bytes."""
+    return hex_to_bytes(p)
+
+def find_all_occurrences(data, pattern):
+    """Yield starting offsets of non-overlapping? We'll do all occurrences (overlapping allowed)."""
+    start = 0
+    while True:
+        idx = data.find(pattern, start)
+        if idx == -1:
+            break
+        yield idx
+        start = idx + 1
+
+def count_occurrences(data, pattern):
+    """Count occurrences (overlapping allowed)."""
+    return sum(1 for _ in find_all_occurrences(data, pattern))
+
+def first_occurrence(data, pattern):
+    """Return offset of first occurrence or -1."""
+    idx = data.find(pattern)
+    return idx
+
+def format_bytes_as_hex(b):
+    """Format bytes as hex with spaces? Spec uses no spaces in pattern but messages may show spaces."""
+    return ' '.join(f'{x:02X}' for x in b)
+
+# ------------------------------------------------------------
+# Rule engine
+
+def check_rule(rule, data, stage, strict, ceiling, R):
+    """
+    Run a single rule. Returns (ok, is_warning, message) where ok is bool,
+    is_warning is True if the rule is a warning (even if passed),
+    message is a formatted string if rule failed (or warning triggered).
+    """
+    kind = rule.get("kind")
+    min_stage = rule.get("min_stage", 1)
+    severity = rule.get("severity", "error")
+    message_template = rule.get("message", "")
+    config = rule.get("config", {})
+
+    # Stage gating
+    if stage < min_stage:
+        return True, False, None
+
+    # For rules that need R (selfloc, budget?), R is passed in.
+    # budget uses ceiling instead.
+
+    if kind == "prefix":
+        pattern = normalize_pattern(rule["pattern"])
+        if not data.startswith(pattern):
+            prefix_len = min(len(pattern), len(data))
+            actual_prefix = data[:prefix_len]
+            msg = message_template.format(prefix=bytes_to_hex(actual_prefix))
+            return False, (severity == "warn"), msg
+        return True, False, None
+
+    elif kind == "suffix":
+        pattern = normalize_pattern(rule["pattern"])
+        cond_hexes = config.get("cond", [])
+        if cond_hexes:
+            # Rule inactive unless any cond appears
+            inactive = True
+            for ch in cond_hexes:
+                if normalize_pattern(ch) in data:
+                    inactive = False
+                    break
+            if inactive:
+                return True, False, None
+        if not data.endswith(pattern):
+            suffix_len = min(len(pattern), len(data))
+            actual_suffix = data[-suffix_len:] if suffix_len > 0 else b''
+            msg = message_template.format(suffix=bytes_to_hex(actual_suffix))
+            return False, (severity == "warn"), msg
+        return True, False, None
+
+    elif kind == "absent":
+        pattern = normalize_pattern(rule["pattern"])
+        idx = first_occurrence(data, pattern)
+        if idx != -1:
+            # include offending bytes in message?
+            # spec says "found offset and offending bytes"
+            offending = data[idx:idx+len(pattern)]
+            msg = message_template.format(offset=idx)
+            return False, (severity == "warn"), msg
+        return True, False, None
+
+    elif kind == "count":
+        pattern = normalize_pattern(rule["pattern"])
+        actual_count = count_occurrences(data, pattern)
+        op = config.get("op", "eq")
+        value = config.get("value", 1)
+        ok = False
+        if op == "eq":
+            ok = (actual_count == value)
+        elif op == "le":
+            ok = (actual_count <= value)
+        elif op == "ge":
+            ok = (actual_count >= value)
+        else:
+            raise ValueError(f"Unknown op {op} in count rule")
+        if not ok:
+            msg = message_template.format(count=actual_count)
+            return False, (severity == "warn"), msg
+        return True, False, None
+
+    elif kind == "before":
+        a_pattern = normalize_pattern(config["a"])
+        b_patterns = [normalize_pattern(b) for b in config["b"]]
+        # find first occurrence of any b
+        first_b_off = -1
+        first_b_hex = None
+        for b_pat, b_hex in zip(b_patterns, config["b"]):
+            idx = first_occurrence(data, b_pat)
+            if idx != -1 and (first_b_off == -1 or idx < first_b_off):
+                first_b_off = idx
+                first_b_hex = b_hex
+        if first_b_off == -1:
+            # no b appears, rule inactive
+            return True, False, None
+        # check if a appears before first_b_off
+        a_idx = first_occurrence(data, a_pattern)
+        if a_idx == -1 or a_idx >= first_b_off:
+            msg = message_template.format(b_hex=first_b_hex)
+            return False, (severity == "warn"), msg
+        return True, False, None
+
+    elif kind == "selfloc":
+        marker = bytes.fromhex("E800005D")
+        idx = data.find(marker)
+        if idx == -1:
+            msg = "selfloc marker (call get_ip / pop bp) not found"
+            return False, (severity == "warn"), msg
+
+        # After the marker, expect LEA opcode 0x8D
+        lea_opcode_off = idx + len(marker)
+        if lea_opcode_off >= len(data):
+            msg = "selfloc: truncated after marker"
+            return False, (severity == "warn"), msg
+        if data[lea_opcode_off] != 0x8D:
+            msg = f"selfloc: expected LEA opcode 8D after marker, found {data[lea_opcode_off]:02X}"
+            return False, (severity == "warn"), msg
+
+        modrm_off = lea_opcode_off + 1
+        if modrm_off >= len(data):
+            msg = "selfloc: missing ModRM byte"
+            return False, (severity == "warn"), msg
+        modrm = data[modrm_off]
+
+        if modrm == 0x6E:
+            # disp8
+            disp_len = 1
+            disp_bytes = data[modrm_off+1 : modrm_off+1+disp_len]
+            if len(disp_bytes) < disp_len:
+                msg = f"selfloc: truncated disp8 at offset {modrm_off+1}"
+                return False, (severity == "warn"), msg
+            disp = disp_bytes[0]
+            if disp & 0x80:
+                disp = disp - 256
+            encoding = "disp8"
+        elif modrm == 0xAE:
+            # disp16
+            disp_len = 2
+            disp_bytes = data[modrm_off+1 : modrm_off+1+disp_len]
+            if len(disp_bytes) < disp_len:
+                msg = f"selfloc: truncated disp16 at offset {modrm_off+1}"
+                return False, (severity == "warn"), msg
+            disp = int.from_bytes(disp_bytes, 'little', signed=True)
+            encoding = "disp16"
+        else:
+            msg = f"selfloc: unexpected ModRM byte {modrm:02X} at offset {modrm_off}"
+            return False, (severity == "warn"), msg
+
+        allowed_encodings = config.get("encodings", ["disp8", "disp16"])
+        if encoding not in allowed_encodings:
+            msg = f"selfloc: encoding {encoding} not allowed"
+            return False, (severity == "warn"), msg
+
+        expected_disp = R - 6
+        found_r = 6 + disp
+        if disp != expected_disp:
+            msg = message_template.format(found_disp=disp, found_r=found_r,
+                                          expected_disp=expected_disp)
+            return False, (severity == "warn"), msg
+        return True, False, None
+
+    elif kind == "budget":
+        found_size = len(data)
+        if found_size > ceiling:
+            msg = message_template.format(found_size=found_size, ceiling=ceiling)
+            return False, (severity == "warn"), msg
+        return True, False, None
+
+    else:
+        raise ValueError(f"Unknown rule kind: {kind}")
+
+def lint(data, rules, stage, strict, ceiling, R):
+    """Run all rules, return (errors, warnings) as lists of strings."""
+    errors = []
+    warnings = []
+    for rule in rules:
+        if rule.get("disabled", False):
+            continue
+        ok, is_warning, msg = check_rule(rule, data, stage, strict, ceiling, R)
+        if not ok:
+            if is_warning:
+                warnings.append(msg)
+                if strict:
+                    # escalate to error
+                    errors.append(msg)
+            else:
+                errors.append(msg)
+        elif is_warning:
+            # warning that passed? Actually a warning rule that passes should produce no message.
+            pass
+    return errors, warnings
+
+# ------------------------------------------------------------
+# UASM self-test
+
+def uasm_self_test(uasm_path, cache_dir):
+    """Perform one-time UASM padding check. Returns True if OK."""
+    cache_file = os.path.join(cache_dir, "uasm_ok")
+    if os.path.exists(cache_file):
+        return True
+    # create temp asm
+    asm_src = """\
+option casemap:none
+option segment:use16
+
+code segment
+    assume cs:code
+    org 0
+start:
+    retf
+code ends
+end start
+"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.asm', delete=False) as f:
+        f.write(asm_src)
+        tmp_asm = f.name
+    with tempfile.NamedTemporaryFile(suffix='.bin', delete=False) as f:
+        tmp_bin = f.name
+    try:
+        cmd = [uasm_path, "-bin", "-Fl", "-Fo", tmp_bin, tmp_asm]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            print(f"UASM self-test failed with code {proc.returncode}: {proc.stderr}", file=sys.stderr)
+            return False
+        with open(tmp_bin, 'rb') as f:
+            b = f.read()
+        if len(b) != 1 or b[0] != 0xCB:
+            print(f"UASM padding self-test failed: expected 1 byte CB, got {len(b)} bytes: {b.hex()}", file=sys.stderr)
+            return False
+        # write cache
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cache_file, 'w') as f:
+            f.write("ok")
+        return True
+    finally:
+        if os.path.exists(tmp_asm):
+            os.unlink(tmp_asm)
+        if os.path.exists(tmp_bin):
+            os.unlink(tmp_bin)
+
+# ------------------------------------------------------------
+# BASIC DATA parsing and generation
+
+def generate_data_lines(binary, start_line=1000):
+    """Return list of DATA lines (strings) including final -1.
+
+    Args:
+        binary: bytes object to encode.
+        start_line: first line number (default 1000).
+
+    Returns:
+        List of strings, each a complete DATA line with a unique line number.
+    """
+    lines = []
+    line_num = start_line
+    # Split binary into chunks of up to 16 bytes per DATA line
+    for i in range(0, len(binary), 16):
+        chunk = binary[i:i+16]
+        hex_values = [f"&H{byte:02X}" for byte in chunk]
+        lines.append(f"{line_num} DATA " + ",".join(hex_values))
+        line_num += 1
+    # Append sentinel
+    lines.append(f"{line_num} DATA -1")
+    return lines
+
+def parse_bas_file(bas_path):
+    """Parse a BASIC file with DATA statements. Returns (bytes, errors)."""
+    with open(bas_path, 'r', errors='replace') as f:
+        content = f.read()
+    return parse_bas_content(content, os.path.basename(bas_path))
+
+def parse_bas_content(content, source_name="<string>"):
+    """Parse BASIC source text. Returns (bytes, errors_list)."""
+    errors = []
+    data_bytes = bytearray()
+    lines = content.splitlines()
+    line_number = 0
+    for raw_line in lines:
+        line_number += 1
+        # remove leading line number if present
+        m = re.match(r'^\s*(\d+)\s+(.*)$', raw_line)
+        if m:
+            lineno = int(m.group(1))
+            rest = m.group(2)
+        else:
+            rest = raw_line
+        # split by colon to handle multiple statements
+        statements = rest.split(':')
+        for stmt in statements:
+            stmt = stmt.strip()
+            if not stmt:
+                continue
+            # check if it's a DATA statement
+            if stmt.upper().startswith('DATA'):
+                # get the part after DATA
+                data_part = stmt[4:].strip()
+                # tokens separated by commas
+                tokens = data_part.split(',')
+                for token in tokens:
+                    token = token.strip()
+                    if not token:
+                        continue
+                    # skip trailing comments
+                    if token.startswith("'") or token.startswith("REM"):
+                        break
+                    # decode token
+                    if token == '-1':
+                        # sentinel
+                        return bytes(data_bytes), errors
+                    else:
+                        # should be &Hxx or &hxx
+                        m = re.match(r'^&[hH]([0-9a-fA-F]{1,2})$', token)
+                        if not m:
+                            errors.append(f"{source_name}:{line_number}: invalid DATA token '{token}'")
+                            continue
+                        value = int(m.group(1), 16)
+                        data_bytes.append(value)
+    # if no sentinel found, error
+    errors.append(f"{source_name}: no -1 sentinel found")
+    return bytes(data_bytes), errors
+
+# ------------------------------------------------------------
+# Subcommand implementations
+
+def cmd_build(args, **kwargs):
+    uasm = args.uasm or "uasm"
+    src_asm = args.src
+    base = os.path.splitext(src_asm)[0]
+    out_bin = base + ".bin"
+    out_data = base + ".data"
+    out_bas = base + ".bas"
+    start_line = kwargs.get("start_line", 1000)
+
+    # UASM self-test
+    cache_dir = os.path.join(os.path.expanduser("~"), ".jr_cache")
+    if not uasm_self_test(uasm, cache_dir):
+        print("UASM padding self-test failed", file=sys.stderr)
+        sys.exit(2)
+
+    # assemble
+    cmd = [uasm, "-bin", "-Fl", "-Fo", out_bin, src_asm]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(f"UASM failed: {proc.stderr}", file=sys.stderr)
+        sys.exit(2)
+
+    # read binary
+    with open(out_bin, "rb") as f:
+        code = f.read()
+    code_len = len(code)
+
+    # determine R
+    if args.result is not None:
+        R = args.result
+    else:
+        R = 128 if code_len <= 128 else 180
+
+    # check R >= code_len
+    if R < code_len:
+        print(f"Loader invariant failed: R={R} < code_len={code_len}", file=sys.stderr)
+        if not args.keep:
+            # remove partial outputs
+            for f in [out_bin, out_data, out_bas]:
+                if os.path.exists(f):
+                    os.unlink(f)
+        sys.exit(5)
+
+    # load rules
+    rules_path = args.rules or RULES_FILE
+    with open(rules_path, 'r') as f:
+        rules_json = json.load(f)
+    rules = rules_json.get("rules", [])
+
+    # lint
+    errors, warnings = lint(code, rules, args.stage, args.strict, args.ceiling, R)
+    # print warnings (unless strict already escalated)
+    for w in warnings:
+        print(f"WARN: {w}", file=sys.stderr)
+    if errors:
+        for e in errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        if not args.keep:
+            # remove generated files (maybe bin is okay to keep? spec says remove intermediates)
+            for f in [out_bin, out_data, out_bas]:
+                if os.path.exists(f):
+                    os.unlink(f)
+        sys.exit(4)
+
+    # generate DATA lines
+    data_lines = generate_data_lines(code)
+
+    # write .data file
+    with open(out_data, 'w') as f:
+        for line in data_lines:
+            f.write(line + "\n")
+
+    # generate loader .bas
+    # compute DIM
+    needed = max(code_len, R + 6)
+    dim = (needed + 1) // 2 - 1
+    loader = LOADER_TEMPLATE.replace("__DIM__", str(dim)).replace("__RESULT__", str(R))
+    data_lines = generate_data_lines(code, start_line=start_line)   # starts at 1000
+
+    with open(out_bas, 'w') as f:
+        f.write(loader)
+        for line in data_lines:
+            f.write(line + "\n")
+
+    print(f"PASS: {src_asm} -> {out_bin} ({code_len} bytes, R={R}) -> {out_bas}")
+    sys.exit(0)
+
+def cmd_lint(args):
+    with open(args.binfile, 'rb') as f:
+        data = f.read()
+    # R must be provided for selfloc rule; if not and selfloc active, error
+    rules_path = args.rules or RULES_FILE
+    with open(rules_path, 'r') as f:
+        rules_json = json.load(f)
+    rules = rules_json.get("rules", [])
+    # check if selfloc rule is active
+    selfloc_active = any(r.get("kind") == "selfloc" and args.stage >= r.get("min_stage", 1) for r in rules)
+    if selfloc_active and args.result is None:
+        print("Error: --result is required when selfloc rule is active", file=sys.stderr)
+        sys.exit(1)
+    R = args.result if args.result is not None else 0  # not used if no selfloc
+    errors, warnings = lint(data, rules, args.stage, args.strict, args.ceiling, R)
+    for w in warnings:
+        print(f"WARN: {w}", file=sys.stderr)
+    if errors:
+        for e in errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(4)
+    else:
+        print("PASS")
+        sys.exit(0)
+
+def cmd_verify(args):
+    bas_path = args.bas
+    bin_path = args.bin
+    data, parse_errors = parse_bas_file(bas_path)
+    if parse_errors:
+        for err in parse_errors:
+            print(f"Parse error: {err}", file=sys.stderr)
+        sys.exit(7)
+    with open(bin_path, 'rb') as f:
+        bin_data = f.read()
+    if data == bin_data:
+        print(f"verify: {bas_path} matches {bin_path} ({len(data)} bytes)")
+        sys.exit(0)
+    else:
+        print(f"verify: mismatch between {bas_path} and {bin_path}", file=sys.stderr)
+        sys.exit(6)
+
+def cmd_golden(args):
+    bas_path = args.bas
+    out_path = args.out if args.out else os.path.splitext(bas_path)[0] + ".golden.bin"
+    data, parse_errors = parse_bas_file(bas_path)
+    if parse_errors:
+        for err in parse_errors:
+            print(f"Parse error: {err}", file=sys.stderr)
+        sys.exit(7)
+    with open(out_path, 'wb') as f:
+        f.write(data)
+    print(f"golden: wrote {len(data)} bytes to {out_path}")
+    sys.exit(0)
+
+def cmd_dis(args):
+    binfile = args.binfile
+    # run ndisasm
+    cmd = ["ndisasm", "-b", "16", binfile]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(f"ndisasm failed: {proc.stderr}", file=sys.stderr)
+        sys.exit(2)
+    sys.stdout.write(proc.stdout)
+    sys.exit(0)
+
+def cmd_data(args):
+    binfile = args.binfile
+    with open(binfile, 'rb') as f:
+        data = f.read()
+    lines = generate_data_lines(data)
+    for line in lines:
+        print(line)
+    sys.exit(0)
+
+def cmd_parse(args):
+    bas_path = args.bas
+    data, parse_errors = parse_bas_file(bas_path)
+    if parse_errors:
+        for err in parse_errors:
+            print(f"Parse error: {err}", file=sys.stderr)
+        sys.exit(7)
+    if args.out:
+        with open(args.out, 'wb') as f:
+            f.write(data)
+    else:
+        sys.stdout.buffer.write(data)
+    sys.exit(0)
+
+# ------------------------------------------------------------
+# Main
+
+def main():
+    parser = argparse.ArgumentParser(description="jr - PCjr bridge byte pipeline")
+    subparsers = parser.add_subparsers(dest='command', required=True)
+
+    # build
+    p_build = subparsers.add_parser('build', help='assemble, lint, emit .data and .bas')
+    p_build.add_argument('src', help='source .asm file')
+    p_build.add_argument('--stage', type=int, default=6)
+    p_build.add_argument('--result', type=int, default=None, help='explicit result offset')
+    p_build.add_argument('--ceiling', type=int, default=180)
+    p_build.add_argument('--rules', help='override rules JSON file')
+    p_build.add_argument('--strict', action='store_true', help='escalate warnings to errors')
+    p_build.add_argument('--uasm', help='path to uasm executable')
+    p_build.add_argument('--keep', action='store_true', help='keep intermediates on failure')
+    p_build.set_defaults(func=cmd_build)
+
+    # lint
+    p_lint = subparsers.add_parser('lint', help='lint a binary file')
+    p_lint.add_argument('binfile')
+    p_lint.add_argument('--stage', type=int, default=6)
+    p_lint.add_argument('--result', type=int, default=None, help='required if selfloc rule active')
+    p_lint.add_argument('--ceiling', type=int, default=180)
+    p_lint.add_argument('--rules', help='override rules JSON file')
+    p_lint.add_argument('--strict', action='store_true')
+    p_lint.set_defaults(func=cmd_lint)
+
+    # verify
+    p_verify = subparsers.add_parser('verify', help='verify .bas against .bin')
+    p_verify.add_argument('bas')
+    p_verify.add_argument('bin')
+    p_verify.set_defaults(func=cmd_verify)
+
+    # golden
+    p_golden = subparsers.add_parser('golden', help='extract golden .bin from .bas')
+    p_golden.add_argument('bas')
+    p_golden.add_argument('--out', help='output file (default basename.golden.bin)')
+    p_golden.set_defaults(func=cmd_golden)
+
+    # dis
+    p_dis = subparsers.add_parser('dis', help='disassemble with ndisasm')
+    p_dis.add_argument('binfile')
+    p_dis.set_defaults(func=cmd_dis)
+
+    # data
+    p_data = subparsers.add_parser('data', help='emit DATA lines from binary')
+    p_data.add_argument('binfile')
+    p_data.set_defaults(func=cmd_data)
+
+    # parse
+    p_parse = subparsers.add_parser('parse', help='extract bytes from .bas DATA')
+    p_parse.add_argument('bas')
+    p_parse.add_argument('--out', help='output binary file (default stdout)')
+    p_parse.set_defaults(func=cmd_parse)
+
+    args = parser.parse_args()
+    args.func(args)
+
+if __name__ == "__main__":
+    main()
