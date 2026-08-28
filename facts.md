@@ -1277,3 +1277,44 @@ build CLI no longer deletes existing outputs on failure; writes only after lint 
 ## 2026-08-28 · jr_parse_comment_sentinel · decision
 
 parse_bas_content now tolerates trailing comments after -1 sentinel; negative result args raise usage error.
+## 2026-08-28 · jr_mcp_pipeline · decision
+
+`jr` is now the single byte-pipeline tool registered on `pcjr-tools`
+(server v8). `debug_asm` and `pjasm` are retired and not registered.
+Seven commands: build, lint, verify, golden, dis, data, parse. Backing:
+`refs/jr-tools/jr.py`; UASM assembles, NDISASM disassembles, both on
+PATH. Inputs are inline-first: `asm_text` / `bin_hex` / `bas_text`
+replace `src` / `binfile` / `bas` for development; file inputs only for
+persistence. Construction gate is: `jr build` (UASM, at target stage) ->
+`jr dis` (NDISASM review) -> `jr lint` (named invariants). Never
+hand-roll bytes. References: `docs/jr_tool_spec.md`,
+`refs/jr-tools/jr_rules.json`.
+
+supersedes:
+
+- pjasm_mcp_tool
+- pjasm_r8_extension
+- pjasm_selftest_merge
+- pjasm_bracket_spacing
+- pjasm_operand_rules
+- pjasm_missing_r8_shapes
+
+## 2026-08-28 · jr_mcp_inline_surface · empirical
+
+Verified live against `pcjr-tools` (2026-08-28):
+
+- `jr dis` with `bin_hex` "0E1F555DCB" returns NDISASM text
+(push cs / pop ds / push bp / pop bp / retf).
+- `jr build` with `asm_text` + `stage:1` returns status pass,
+`bin_hex` 0E1F555DCB, `data_block`, and a float16-safe generated
+`bas_source` (auto-sized `DIM`, `256!` multipliers).
+- Omitting the UASM segment wrapper raises A2082 "Must be in segment
+block". Canonical skeleton = `docs/jr_tool_spec.md` section 3.3
+(option casemap:none / option segment:use16 / code segment ... code
+ends / org 0).
+- `jr build` defaults to `stage=6`; a bare stage-1 stub fails exit 4 on
+the selfloc rule (min_stage 2). Pass `stage=1` explicitly for early
+stages.
+- Lint thresholds read from `jr_rules.json`: entry / retf-count /
+epilogue / no-int21h (1), selfloc (2), budget (3), latch-read (4),
+nmi-mask / nmi-restore (5). warn rules block only under `strict=true`.
