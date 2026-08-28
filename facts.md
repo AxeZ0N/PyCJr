@@ -1259,3 +1259,21 @@ IRPING -> S4B1_ST3B -> DEC1_ST2A.
 
 - No new hardware anchors this session (tooling-only scope).
 - Existing anchors unchanged.
+## 2026-08-28 · jr_api_refactor · decision
+jr core logic extracted to jr.py: build, lint, verify, golden, dis, data, parse pure functions; JrError with exit_code; CLI wrapper thin; all side effects limited to subprocess and cache. test_jr.py passes all fixtures.
+
+## 2026-08-28 · jr_mcp_integration · decision
+
+MCP server imports jr.py directly (no subprocess). Smoke-tested via MCP: jr data, lint, parse, golden, lint on S4B1_ST2 anchor; all pass.
+
+## 2026-08-28 · jr_mcp_docstring · decision
+
+jr tool docstring reworked with bridge contract, defaults, output shapes, error format, workflow. Top-level merged docstring covers search_ref, grep_repo, jr.
+
+## 2026-08-28 · jr_build_atomicity · decision
+
+build CLI no longer deletes existing outputs on failure; writes only after lint passes.
+
+## 2026-08-28 · jr_parse_comment_sentinel · decision
+
+parse_bas_content now tolerates trailing comments after -1 sentinel; negative result args raise usage error.
