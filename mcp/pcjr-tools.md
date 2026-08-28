@@ -1,4 +1,4 @@
-# pcjr-tools — Server Ops + Tool Surface (v5)
+# pcjr-tools — Server Ops + Tool Surface (v6)
 
 Server: `pcjr-tools` at `http://localhost:8765/mcp` (loopback bind).
 
@@ -7,8 +7,8 @@ Server: `pcjr-tools` at `http://localhost:8765/mcp` (loopback bind).
 | Tool | Mode / command | Purpose |
 |---|---|---|
 | `search_ref` | `query` \| `peek` \| `stats` | Manual strip search |
-| `debug_asm` | command dispatch | 8088 byte workbench |
-| `grep_repo` | `query` \| `stats` \| `roots` | Read-only repo fact search (stdlib, no git) |
+| `grep_repo` | `query` \| `read` \| `grep_all` \| `stats` \| `roots` | Read-only repo search (stdlib, no git) |
+| `jr` | `build` \| `lint` \| `verify` \| `golden` \| `dis` \| `data` \| `parse` | Bridge byte pipeline (UASM + NDISASM) |
 
 ### search_ref
 
@@ -20,13 +20,25 @@ mode: stats   verbose (omit or true; never false)
 
 ```
 
-### debug_asm
+### jr
 
 ```
 
-command: selftest|parse|emit|decode|patch|check|branch|rel8|rel16|selfloc
+command: build    asm_text (or src); stage(6), result(auto), ceiling(180), strict
+command: lint     bin_hex (or binfile); stage, result, ceiling, strict
+command: verify   bas, bin
+command: golden   bas [--out F]
+command: dis      bin_hex (or binfile)   -> ndisasm -b 16
+command: data     bin_hex (or binfile)   -> DATA lines + -1
+command: parse    bas_text (or bas)      -> hex
 
 ```
+
+Inline inputs (`asm_text`, `bin_hex`, `bas_text`) are preferred for
+development; file inputs only for persistence. Inline strings carry no
+`0x`/`&H` prefixes. `build` requires the UASM segment wrapper (see
+`docs/jr_tool_spec.md` section 3.3). Zero-arg hazard: every `jr` call
+MUST include `command`.
 
 ### grep_repo
 
@@ -41,20 +53,27 @@ Schema:
 }
 ```
 
-- `query` — regex search over `facts.md`, `sessions/`, `docs/` (case-insensitive; `|` works).
+- `query` — regex search over `facts.md`, `sessions/`, `docs/`
+  (case-insensitive; `|` works).
+- `read` — full file by root-relative path, whole repo (text only;
+  hidden/absolute/`../`/symlink escapes refused). Args: `path`.
+- `grep_all` — regex search across whole repo (text only). Args:
+  `query`; capped by `max_matches` (default 50).
 - `stats` — file/line counts per root.
 - `roots` — which roots exist.
 - Zero-arg hazard: every `grep_repo` call MUST include `mode`.
 
 ## Registration (already wired)
 
-`grep_repo` is registered in `mcp/pcjr_tools_server.py` (v5). It imports
-the engine from `refs/pcjr_repo_grep.py`. No manual edit needed.
+Server v8 registers `search_ref`, `grep_repo`, and `jr` in
+`mcp/pcjr_tools_server.py`. `jr` is imported from
+`refs/jr-tools/jr.py`; UASM and NDISASM are expected on PATH.
 
 If you rebuild the server from scratch:
 
 ```
 import pcjr_repo_grep as GREP
+import jr as JR
 
 @mcp.tool()
 def grep_repo(mode: str, query: Optional[str] = None,
@@ -72,14 +91,16 @@ Self-test:
 
 ```
 bin/grep_selftest.sh
+python3 mcp/test_mcp_jr_smoke.py
 ```
 
 ## Security posture (do not weaken)
 
-- Fixed roots: `facts.md`, `sessions/`, `docs/`. No `..`, no absolute paths.
-- No git binary, no subprocess, stdlib only.
+- `grep_repo` query mode: fixed roots `facts.md`, `sessions/`, `docs/`.
+  Whole-repo `read`/`grep_all` refuse hidden paths, absolute paths,
+  `../`, and symlink escapes. No git binary, no subprocess, stdlib only.
 - Writes NEVER go through the server. Writes are user-owned via
-`bin/jr-commit.sh` and `bin/migrate_repo.py`.
+  `bin/jr-commit.sh` and `bin/migrate_repo.py`.
 
 ## Paste-first fallback
 
@@ -97,4 +118,3 @@ python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt query "<term>" --conte
 python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt peek 30 35
 python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt stats --verbose
 ```
-

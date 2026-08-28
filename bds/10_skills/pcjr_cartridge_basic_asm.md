@@ -19,8 +19,8 @@ IR link.
 ## Primary Sources
 
 1. IBM PCjr Technical Reference — November 1983, First Edition Revised.
-   Digitized strip, accessed through the `pcjr-tools` MCP server
-   (`search_ref` / `debug_asm`).
+    Digitized strip, accessed through the `pcjr-tools` MCP server
+    (`search_ref` / `grep_repo` / `jr`).
 2. IBM PCjr BASIC Reference — June 1983.
 3. Ralf Brown's Interrupt List (RBIL) Release 61.
 
@@ -368,5 +368,5 @@ Anchor ground truth lives in `docs/anchors/`, never in this skill.
 - BASLOAD.BAS   -> docs/anchors/BASLOAD.BAS    (generic harness, no data lines)
 
 Agreement rule: DATA blocks in `.BAS` must byte-match the corresponding
-`.ASM`. Regenerate via `debug_asm`, never hand-roll.
+`.ASM`. Regenerate via `jr build` (UASM emits `.data`/`.bas`), never hand-roll.
 

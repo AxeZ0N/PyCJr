@@ -1,62 +1,42 @@
-# PyCJr
+# PyCJr — Repo (v5 living repo)
 
-IBM PCjr (4860/4861) + Pi-driven IR keyboard link. Development toolkit,
-BDS import package, MCP server, and durable project record in one repo.
+PCjr machine-code bridge and Pi-driven IR keyboard link. This README is
+a pointer to the living layout; hard values live in `facts.md`, skills
+live in `bds/`, narrative lives in `sessions/`.
 
-## Directory map (v5 living repo)
+## Layout
 
-| Path | Purpose |
+| Path | What it is |
 |---|---|
-| `bds/` | BDS import package (markdown only; the assistant reads this) |
 | `facts.md` | Append-only fact journal (values; `supersedes:` lines) |
 | `sessions/` | Append-only narrative per scope (`YYYY-MM-DD_scope.md`) |
 | `docs/` | Compiled views / archive: test log, CH0 calibration, FAQ, changelog |
 | `mcp/pcjr-tools.md` | Server ops: start, env, registration, tool surface |
-| `mcp/pcjr_tools_server.py` | The live MCP server (`search_ref`, `debug_asm`, `grep_repo`) |
+| `mcp/pcjr_tools_server.py` | The live MCP server (`search_ref`, `grep_repo`, `jr`) |
 | `refs/` | Manual strip + Python drivers (verbatim, moved manually) |
 | `bin/` | `jr-commit.sh`, `migrate_repo.py`, selftests, server launcher |
+| `bds/` | Import package: system prompt, skills, persona, project doc |
 
-## What the assistant can and cannot see
+## What the assistant sees
 
-- Sees: `bds/` (imported) + live MCP tools (`search_ref`, `debug_asm`,
-  `grep_repo`).
-- Does not see: `facts.md`, `sessions/`, `docs/`, `mcp/`, `refs/`,
-  `bin/`. Those are for you. Bridge repo state via `grep_repo` calls or
-  paste-first `git grep`.
+- Sees: `bds/` (imported) + live MCP tools (`search_ref`, `grep_repo`,
+  `jr`).
 
-## Session loop
+## Tool surface (authoritative)
 
-1. Start: `git log --oneline -20` + paste latest `sessions/*.md`.
-2. Work: skills govern; stage gates; contracts as now.
-3. End: assistant proposes facts.md appends + session file + optional
-   `docs/test_log.md` append. You approve, save, run
-   `bin/jr-commit.sh "scope: <summary>" facts.md sessions/... docs/...`.
-4. Next session: the handoff is already in git.
+The registered MCP tools on `pcjr-tools`:
 
-## One-time baseline commits (historical)
+- `search_ref` — manual strip (query / peek / stats)
+- `grep_repo` — read-only repo search (query / read / grep_all / stats / roots)
+- `jr` — bridge byte pipeline (build / lint / verify / golden / dis / data / parse)
 
-The repo was restaged with the `--setup` escape:
+`debug_asm` and `pjasm` are retired. They are not registered on the live
+server; `jr` (UASM + NDISASM) is the single construction/lint/review
+surface. Historical references to them in `facts.md` and `sessions/` are
+append-only records of what was true then, not current API.
 
-```bash
-bin/jr-commit.sh --setup "machinery baseline" bin/... refs/... mcp/...
-bin/jr-commit.sh --setup "refactor baseline" facts.md sessions/... bds/... docs/... README.md MANIFEST.md
-```
+## Ingest
 
-Day-to-day commits stay narrow: `facts.md`, `sessions/`, `docs/` only.
-
-## Single-source policy
-
-`MANIFEST.md` is the canonical artifact inventory — every file labeled
-with type, import target, version, and status. Consult it before adding
-or moving anything.
-
-Each fact has one owner; everywhere else points, never restates.
-
-- Platform skill owns hardware facts + IR protocol.
-- Workflow skill owns retrieval, tooling, stage gates, emission gate.
-- Project doc owns always-active rules, assumptions, open items.
-- `facts.md` owns single values (append-only; updates use `supersedes:`).
-- `docs/ch0_calibration.md` owns CH0CAL method + defects.
-- `docs/test_log.md` owns run history (volatile readings).
-- `sessions/` owns per-scope narrative and decisions.
-
+User runs `bin/jr-ingest.sh <payload.zip>`. Payload contract lives in
+`facts.md` `ingest_payload` and `docs/FAQ.md` (sections 7 and 21).
+Repo wins over the BDS cache on any drift.

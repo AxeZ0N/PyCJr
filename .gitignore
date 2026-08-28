@@ -10,3 +10,9 @@ wheels/
 .venv
 *.toml
 *.lock
+
+*.zip
+*.lst
+*.o
+*.vim
+*.bin

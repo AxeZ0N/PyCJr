@@ -92,8 +92,9 @@ Errors from jr are returned as: "ERROR (exit N):\n<message>".
        - Use search_ref for manual facts (ports, bits, vectors).
        - Use grep_repo for repo facts/decisions and session ground truth.
   2. Construct bytes:
-       - Prefer pjasm / debug_asm tools. Never hand-roll rel8/rel16.
-       - Or assemble a complete source with jr build.
+       - Assemble a complete source with jr build (UASM owns encoding;
+         never hand-roll rel8/rel16).
+       - Review with jr dis (NDISASM) and gate with jr lint.
   3. Lint the generated binary:
        - jr lint FILE.bin --stage N --result R
        - If selfloc rule is active, result is required.
@@ -246,11 +247,16 @@ def grep_repo(
 @mcp.tool()
 def jr(
     command: str,
+    # file inputs (legacy)
     src: Optional[str] = None,
     binfile: Optional[str] = None,
     bas: Optional[str] = None,
     bin: Optional[str] = None,
     out: Optional[str] = None,
+    # inline inputs (new)
+    asm_text: Optional[str] = None,
+    bin_hex: Optional[str] = None,
+    bas_text: Optional[str] = None,
     stage: Optional[int] = None,
     result: Optional[int] = None,
     ceiling: Optional[int] = None,
@@ -259,28 +265,19 @@ def jr(
     uasm: Optional[str] = None,
     keep: bool = False,
 ) -> str:
-    """PCjr bridge byte pipeline (assemble, lint, verify, data, parse, dis).
+    """PCjr bridge byte pipeline with inline or file inputs.
 
-    command:
-        build    Assemble SRC.asm -> .bin, lint, emit .data and .bas.
-                 Needs 'src'. Optional: stage, result, ceiling, rules,
-                 strict, uasm, keep.
-        lint     Lint FILE.bin. Needs 'binfile'. Optional: stage, result,
-                 ceiling, rules, strict.
-        verify   Compare .bas DATA to .bin. Needs 'bas' and 'bin'.
-        golden   Extract bytes from .bas to a .bin file. Needs 'bas'.
-                 Optional: out (default NAME.golden.bin).
-        dis      Disassemble FILE.bin with ndisasm. Needs 'binfile'.
-        data     Emit DATA lines from FILE.bin. Needs 'binfile'.
-        parse    Extract bytes from .bas DATA. Needs 'bas'.
-                 Optional: out (default stdout).
+    Prefer inline inputs (asm_text, bin_hex, bas_text) for development;
+    use file inputs only when persistence is required.
+    All inline inputs are strings without 0x/&H prefixes.
     """
     try:
         if command == "build":
-            if not src:
-                return "ERROR: command=build requires 'src'"
-            with open(src, 'r') as f:
-                asm_text = f.read()
+            if asm_text is None:
+                if not src:
+                    return "ERROR: command=build requires 'src' or 'asm_text'"
+                with open(src, 'r') as f:
+                    asm_text = f.read()
             res = JR.build(
                 asm_text,
                 stage=stage if stage is not None else 6,
@@ -290,24 +287,23 @@ def jr(
                 strict=strict,
                 uasm=uasm or "uasm",
             )
-            # Write outputs (same as CLI)
-            base = os.path.splitext(src)[0]
-            bin_path = base + ".bin"
-            data_path = base + ".data"
-            bas_path = base + ".bas"
-            with open(bin_path, 'wb') as f:
-                f.write(bytes.fromhex(res["bin_hex"]))
-            with open(data_path, 'w') as f:
-                f.write(res["data_block"])
-            with open(bas_path, 'w') as f:
-                f.write(res["bas_source"])
+            # Return artifacts inline; optionally write if src given.
+            if src:
+                base = os.path.splitext(src)[0]
+                with open(base + ".bin", 'wb') as f:
+                    f.write(bytes.fromhex(res["bin_hex"]))
+                with open(base + ".data", 'w') as f:
+                    f.write(res["data_block"])
+                with open(base + ".bas", 'w') as f:
+                    f.write(res["bas_source"])
             return json.dumps(res, indent=2)
 
         elif command == "lint":
-            if not binfile:
-                return "ERROR: command=lint requires 'binfile'"
-            with open(binfile, 'rb') as f:
-                bin_hex = f.read().hex().upper()
+            if bin_hex is None:
+                if not binfile:
+                    return "ERROR: command=lint requires 'binfile' or 'bin_hex'"
+                with open(binfile, 'rb') as f:
+                    bin_hex = f.read().hex().upper()
             res = JR.lint(
                 bin_hex,
                 stage=stage if stage is not None else 6,
@@ -319,45 +315,52 @@ def jr(
             return json.dumps(res, indent=2)
 
         elif command == "verify":
-            if not bas or not bin:
-                return "ERROR: command=verify requires 'bas' and 'bin'"
-            with open(bas, 'r') as f:
-                bas_text = f.read()
-            with open(bin, 'rb') as f:
-                bin_hex = f.read().hex().upper()
+            if bas_text is None and bas:
+                with open(bas, 'r') as f:
+                    bas_text = f.read()
+            if bin_hex is None and bin:
+                with open(bin, 'rb') as f:
+                    bin_hex = f.read().hex().upper()
+            if bas_text is None or bin_hex is None:
+                return "ERROR: command=verify requires ('bas' or 'bas_text') and ('bin' or 'bin_hex')"
             res = JR.verify(bas_text, bin_hex)
             return json.dumps(res, indent=2)
 
         elif command == "golden":
-            if not bas:
-                return "ERROR: command=golden requires 'bas'"
-            with open(bas, 'r') as f:
-                bas_text = f.read()
+            if bas_text is None:
+                if not bas:
+                    return "ERROR: command=golden requires 'bas' or 'bas_text'"
+                with open(bas, 'r') as f:
+                    bas_text = f.read()
             hex_out = JR.golden(bas_text)
-            out_path = out if out else os.path.splitext(bas)[0] + ".golden.bin"
-            with open(out_path, 'wb') as f:
-                f.write(bytes.fromhex(hex_out))
-            return f"golden: wrote {len(hex_out)//2} bytes to {out_path}"
+            if out:
+                with open(out, 'wb') as f:
+                    f.write(bytes.fromhex(hex_out))
+                return f"golden: wrote {len(hex_out)//2} bytes to {out}"
+            return hex_out
 
         elif command == "dis":
-            if not binfile:
-                return "ERROR: command=dis requires 'binfile'"
-            with open(binfile, 'rb') as f:
-                bin_hex = f.read().hex().upper()
+            if bin_hex is None:
+                if not binfile:
+                    return "ERROR: command=dis requires 'binfile' or 'bin_hex'"
+                with open(binfile, 'rb') as f:
+                    bin_hex = f.read().hex().upper()
             return JR.dis(bin_hex)
 
         elif command == "data":
-            if not binfile:
-                return "ERROR: command=data requires 'binfile'"
-            with open(binfile, 'rb') as f:
-                bin_hex = f.read().hex().upper()
+            if bin_hex is None:
+                if not binfile:
+                    return "ERROR: command=data requires 'binfile' or 'bin_hex'"
+                with open(binfile, 'rb') as f:
+                    bin_hex = f.read().hex().upper()
             return JR.data(bin_hex)
 
         elif command == "parse":
-            if not bas:
-                return "ERROR: command=parse requires 'bas'"
-            with open(bas, 'r') as f:
-                bas_text = f.read()
+            if bas_text is None:
+                if not bas:
+                    return "ERROR: command=parse requires 'bas' or 'bas_text'"
+                with open(bas, 'r') as f:
+                    bas_text = f.read()
             hex_out = JR.parse(bas_text)
             if out:
                 with open(out, 'wb') as f:
@@ -366,7 +369,7 @@ def jr(
             return hex_out
 
         else:
-            return f"ERROR: unknown command '{command}'; valid: build|lint|verify|golden|dis|data|parse"
+            return f"ERROR: unknown command '{command}'"
 
     except JR.JrError as exc:
         return f"ERROR (exit {exc.exit_code}):\n{exc}"

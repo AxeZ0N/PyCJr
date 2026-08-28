@@ -277,6 +277,7 @@ def uasm_self_test(uasm_path: str, cache_dir: str) -> bool:
     cache_file = os.path.join(cache_dir, "uasm_ok")
     if os.path.exists(cache_file):
         return True
+
     asm_src = """\
 option casemap:none
 option segment:use16
@@ -289,32 +290,36 @@ start:
 code ends
 end start
 """
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.asm', delete=False) as f:
-        f.write(asm_src)
-        tmp_asm = f.name
-    with tempfile.NamedTemporaryFile(suffix='.bin', delete=False) as f:
-        tmp_bin = f.name
-    try:
+    with tempfile.TemporaryDirectory() as td:
+        tmp_asm = os.path.join(td, "test.asm")
+        tmp_bin = os.path.join(td, "test.bin")
+        tmp_lst = os.path.join(td, "test.lst")
+
+        with open(tmp_asm, "w") as f:
+            f.write(asm_src)
+
         try:
-            proc = subprocess.run([uasm_path, "-bin", "-Fl", "-Fo", tmp_bin, tmp_asm],
-                                  capture_output=True, text=True)
+            proc = subprocess.run(
+                [uasm_path, "-bin", f"-Fl={tmp_lst}", "-Fo", tmp_bin, tmp_asm],
+                capture_output=True,
+                text=True,
+            )
         except FileNotFoundError:
             return False
+
         if proc.returncode != 0:
             return False
-        with open(tmp_bin, 'rb') as f:
+
+        with open(tmp_bin, "rb") as f:
             b = f.read()
         if len(b) != 1 or b[0] != 0xCB:
             return False
+
         os.makedirs(cache_dir, exist_ok=True)
-        with open(cache_file, 'w') as f:
+        with open(cache_file, "w") as f:
             f.write("ok")
         return True
-    finally:
-        if os.path.exists(tmp_asm):
-            os.unlink(tmp_asm)
-        if os.path.exists(tmp_bin):
-            os.unlink(tmp_bin)
+    # TemporaryDirectory cleans up all files automatically
 
 
 # ----------------------------------------------------------------------
@@ -382,10 +387,10 @@ def parse_bas_content(content: str, source_name: str = "<string>"):
 # API functions (Section 5) with robust subprocess handling
 # ----------------------------------------------------------------------
 
+
 def build(asm_text: str, *, stage=6, result=None, ceiling=180,
           rules=None, strict=False, uasm='uasm') -> dict:
     """Assemble, lint, generate DATA and loader. Returns dict on success."""
-    # Validate result if provided
     if result is not None and result < 0:
         raise JrError("result must be non-negative", exit_code=1)
 
@@ -393,21 +398,27 @@ def build(asm_text: str, *, stage=6, result=None, ceiling=180,
     if not uasm_self_test(uasm, cache_dir):
         raise JrError("UASM padding self-test failed", exit_code=2)
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.asm', delete=False) as f:
-        f.write(asm_text)
-        tmp_asm = f.name
-    tmp_bin = tmp_asm + ".bin"
+    with tempfile.TemporaryDirectory() as td:
+        tmp_asm = os.path.join(td, "input.asm")
+        tmp_bin = os.path.join(td, "output.bin")
+        tmp_lst = os.path.join(td, "listing.lst")
 
-    try:
+        with open(tmp_asm, "w") as f:
+            f.write(asm_text)
+
         try:
-            proc = subprocess.run([uasm, "-bin", "-Fl", "-Fo", tmp_bin, tmp_asm],
-                                  capture_output=True, text=True)
+            proc = subprocess.run(
+                [uasm, "-bin", f"-Fl={tmp_lst}", "-Fo", tmp_bin, tmp_asm],
+                capture_output=True,
+                text=True,
+            )
         except FileNotFoundError:
             raise JrError(f"UASM executable not found: {uasm}", exit_code=2)
+
         if proc.returncode != 0:
             raise JrError(f"UASM failed: {proc.stderr}", exit_code=2)
 
-        with open(tmp_bin, 'rb') as f:
+        with open(tmp_bin, "rb") as f:
             code = f.read()
         code_len = len(code)
 
@@ -437,12 +448,8 @@ def build(asm_text: str, *, stage=6, result=None, ceiling=180,
             "errors": [],
             "warnings": warnings,
         }
+    # TemporaryDirectory cleans up all files automatically
 
-    finally:
-        if os.path.exists(tmp_asm):
-            os.unlink(tmp_asm)
-        if os.path.exists(tmp_bin):
-            os.unlink(tmp_bin)
 
 
 def lint(bin_hex: str, *, stage=6, result=None, ceiling=180,

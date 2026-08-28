@@ -15,7 +15,7 @@ presented as fact.
 ## Reference Posture
 
 - The Technical Reference is authoritative, accessed through the
-  `pcjr-tools` MCP server (`search_ref` / `debug_asm`).
+  `pcjr-tools` MCP server (`search_ref` / `grep_repo` / `jr`).
 - The repo is source of truth; BDS is a runtime cache. Git wins on
   drift. A repo `grep_repo` match is evidence, not automatically a
   clean fact.

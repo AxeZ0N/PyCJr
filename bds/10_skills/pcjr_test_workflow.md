@@ -1,4 +1,4 @@
-# PCjr Design / Test Workflow (v5)
+# PCjr Design / Test Workflow (v6)
 
 ## Activation
 
@@ -8,6 +8,10 @@ machine-code experiment needs a verification path.
 
 - Repo is source of truth; BDS library is a runtime cache. Git wins on
   drift.
+- v6 change: the `jr` tool replaces `debug_asm` and `pjasm` as the
+  single MCP byte-pipeline surface. Inline inputs are preferred; file
+  inputs only for persistence. Stage-gated lint maps to
+  `refs/jr-tools/jr_rules.json` `min_stage` values.
 
 ## Loop Order (always)
 
@@ -36,17 +40,22 @@ Endpoint: `http://localhost:8765/mcp`
 | search_ref | query | query, context (3), max_pages (1) | English prose search |
 | search_ref | peek | start, end (1-based) | Raw entries by file position |
 | search_ref | stats | verbose (omit or true) | Diagnostics only |
-| debug_asm | command | dispatch table below | 8088 byte workbench |
 | grep_repo | query | query, context (2), literal (false) | Repo fact search |
-| grep_repo | stats | — | Repo file/line counts |
-| grep_repo | roots | — | Which roots exist |
+| grep_repo | read | path | Full file, whole repo, root-relative |
+| grep_repo | grep_all | query | Regex across whole repo |
+| jr | command (below) | build/lint/verify/golden/dis/data/parse | Bridge byte pipeline |
 
-Usage:
+Note on notation: this document writes MCP invocations with square
+brackets, e.g. `[BDS:AUTO:MCP ...]`, so it is never parsed as a live
+tool call. In actual use, replace the outer square brackets with angle
+brackets.
 
-```xml
-<BDS:AUTO:MCP url="pcjr-tools" tool="search_ref" args='{"mode":"query","query":"8255 bit assignments","context":3,"max_pages":1}'></BDS:AUTO:MCP>
-<BDS:AUTO:MCP url="pcjr-tools" tool="search_ref" args='{"mode":"peek","start":30,"end":36}'></BDS:AUTO:MCP>
-<BDS:AUTO:MCP url="pcjr-tools" tool="grep_repo" args='{"mode":"query","query":"carrier_high_us|gap2","context":2}'></BDS:AUTO:MCP>
+Usage (shown bracketed):
+
+```
+[BDS:AUTO:MCP url="pcjr-tools" tool="search_ref" args='{"mode":"query","query":"8255 bit assignments","context":3,"max_pages":1}']
+[BDS:AUTO:MCP url="pcjr-tools" tool="search_ref" args='{"mode":"peek","start":30,"end":36}']
+[BDS:AUTO:MCP url="pcjr-tools" tool="grep_repo" args='{"mode":"query","query":"carrier_high_us|gap2","context":2}']
 ```
 
 Traps:
@@ -59,13 +68,14 @@ before transmission. Omit the field or pass true.
 - `query` (search_ref) searches English prose, not register tables. Use
 `peek` for register/port/BIOS facts. Appendix A is the full BIOS dump.
 - Every MCP call MUST include its required field: `search_ref` needs
-`mode`; `debug_asm` needs `command`; `grep_repo` needs `mode`.
+`mode`; `grep_repo` needs `mode`; `jr` needs `command`.
 
 ### Repo read path — grep_repo (Option A) + paste-first git grep
 
-`grep_repo` reads `facts.md`, `sessions/`, and `docs/` only. Stdlib
-only, no git binary, no subprocess, fixed roots, loopback bind. A match
-is evidence, not automatically a clean fact.
+`grep_repo` `query` searches the fact layer (`facts.md`, `sessions/`,
+`docs/`); `read` and `grep_all` span the whole repo (text only, hidden
+paths refused, symlink/absolute/`../` escapes refused). A match is
+evidence, not automatically a clean fact.
 
 When MCP is unavailable, ask the user to run and paste:
 
@@ -122,46 +132,86 @@ Before emitting any port, mode, segment, or vector value:
 Never claim the assistant ran the util locally. Never pass an unverified
 value without the tag.
 
-## ASM tool — debug_asm
+## jr tool — bridge byte pipeline
 
-Server: `pcjr-tools`. Single tool, `command` dispatch:
+Server: `pcjr-tools`. Single tool, `command` dispatch. Backed by
+`refs/jr-tools/jr.py`; UASM assembles, NDISASM disassembles. Inline
+inputs are preferred for development; file inputs only for persistence.
+All inline inputs are strings without `0x`/`&H` prefixes.
 
-| Command ↕▾ ↕▾ ↕▾ | Args ↕▾ ↕▾ ↕▾ |
-|---|---|
-| −−−selftest | mode="all" (after server restart) |
-| −−−parse | text |
-| −−−emit | hex_bytes |
-| −−−decode | hex_bytes |
-| −−−patch | hex_bytes, patches=[{offset,value}] |
-| −−−check | hex_bytes, expected_hex |
-| −−−branch | hex_bytes, checks=[{at,target}] |
-| −−−rel8 | insn, target |
-| −−−rel16 | insn, target |
-| −−−selfloc | pop_offset, base=128 |
-| −−⚙ |  |
-| −⚙ |  |
-⚙
+| Command | Args | Purpose |
+|---|---|---|
+| build | asm_text (or src path); stage (default 6), result (auto), ceiling (180), strict, uasm, keep | UASM assemble -> lint -> `bin_hex`/`data_block`/`bas_source` |
+| lint | bin_hex (or binfile); stage, result, ceiling, strict | lint-only against jr_rules.json |
+| verify | bas, bin | byte-compare .bas DATA to .bin |
+| golden | bas; out | extract DATA from .bas -> .bin |
+| dis | bin_hex (or binfile) | NDISASM `-b 16` human listing |
+| data | bin_hex (or binfile) | emit DATA lines + `-1` sentinel |
+| parse | bas_text (or bas); out | extract hex from .bas |
 
-Example:
+UASM requires a segment wrapper even in `-bin` mode. The canonical
+skeleton (jr_tool_spec section 3.3):
+
+```asm
+option casemap:none
+option segment:use16
+
+code segment
+    assume cs:code
+    org 0
+
+start:
+    push cs
+    pop  ds
+    push bp
+    call get_ip
+get_ip:
+    pop  bp
+    lea  bp, [bp + N - 6]      ; N = result offset R (disp = N - 6)
+    ; ... routine body ...
+    in   al, 0A0h
+    mov  al, 80h
+    out  0A0h, al
+    pop  bp
+    retf
+
+code ends
+end start
+```
+
+Examples (shown bracketed; see Retrieval Protocol notation note):
 
 ```
-<BDS:AUTO:MCP url="pcjr-tools" tool="debug_asm" args='{"command":"decode","hex_bytes":"0E1F55E800005D8DAE7A00"}'></BDS:AUTO:MCP>
+[BDS:AUTO:MCP url="pcjr-tools" tool="jr" args='{"command":"build","asm_text":"option casemap:none\noption segment:use16\ncode segment\n    assume cs:code\n    org 0\nstart:\n    push cs\n    pop  ds\n    push bp\n    pop  bp\n    retf\ncode ends\nend start\n","stage":1}']
+[BDS:AUTO:MCP url="pcjr-tools" tool="jr" args='{"command":"dis","bin_hex":"0E1F555DCB"}']
 ```
 
-Zero-arg hazard: every `debug_asm` call MUST include `command`.
+Zero-arg hazard: every `jr` call MUST include `command`.
+
+Trap (empirical, 2026-08-28): `jr build` defaults to `stage=6`. A bare
+stage-1 bridge stub without selfloc trips the selfloc rule (min_stage 2)
+and fails exit 4. Pass `stage=1` explicitly for early stages.
+
+`jr build` success returns a float16-safe generated loader: auto-sized
+`DIM A(...)` (code + result region) and `256!` multipliers in lines
+170/180. No hand-assembly of the loader.
 
 ## Emission Gate (mandatory)
 
-No machine code leaves a response unless its bytes were produced or
-confirmed by `debug_asm selfloc` + `debug_asm rel8`/`rel16` +
-`debug_asm branch` + `debug_asm decode` BEFORE the DATA block is emitted.
-Hand-rolling a rel8 displacement is a process violation. The tool is the
-construction source of truth, not a post-hoc checker.
+No DATA block leaves a response unless its bytes were produced by
+`jr build` at the target stage and the human reviews `jr dis`. UASM
+owns instruction encoding and branch range; `jr lint` enforces the
+named bridge invariants (entry/selfloc/retf/NMI/budget); `jr dis` is
+the review step for flagged warnings (possible IRET `CF`, possible
+`OUT 61h`) and for confirming branch targets.
 
-The gate proves byte construction and branch displacements. It does
-not prove hardware safety: S1 v2 passed selfloc, 3/3 branch checks,
-and a clean decode, then rebooted the PCjr into BIOS on the first
-NMI. Hardware behavior remains a separate stage gate.
+Hand-rolling any byte or displacement is a process violation. UASM is
+the construction source of truth, `jr lint` the invariant checker,
+NDISASM the review source.
+
+The gate proves construction and named invariants. It does not prove
+hardware safety: S1 v2 passed the old gate then rebooted the PCjr into
+BIOS on the first NMI. Hardware behavior remains a separate stage gate.
 
 ## Test Contract (mandatory)
 
@@ -182,17 +232,22 @@ expectations into a timer, video, or sound routine.
 
 ## Stage Gate (mandatory)
 
-| Stage ↕▾ ↕▾ ↕▾ | New risk ↕▾ ↕▾ ↕▾ | Pass condition ↕▾ ↕▾ ↕▾ |
-|---|---|---|
-| −−−1 Bridge stub | PUSH CS / POP DS / RETF | Returns RETURNED OK |
-| −−−2 Self-location | call get_ip / pop bp | Writes a known byte at O+128 |
-| −−−3 Result stores | Explicit stores O+128/130/132 | BASIC reads expected values |
-| −−−4 IN from target port | Port access | Status changes as documented |
-| −−−5 Polling loop | Edge counters | Edges observed on stimulus |
-| −−−6 Full capture | Complete routine | All contract fields match |
-| −−⚙ |  |  |
-| −⚙ |  |  |
-⚙
+`jr build stage=N` activates every rule whose `min_stage <= N`. `.` =
+error (blocks build); `!` = warn (blocks only under `strict=true`).
+Rule ids and thresholds are normative in `refs/jr-tools/jr_rules.json`.
+
+| Stage | New risk | Lint rules active | Hardware pass condition |
+|---|---|---|---|
+| 1 Bridge stub | PUSH CS / POP DS / PUSH BP / RETF | entry. retf-count. epilogue. no-int21h. no-iret! no-speaker! | Returns RETURNED OK |
+| 2 Self-location | call get_ip / pop bp / lea | + selfloc. | Writes a known byte at O+R |
+| 3 Result stores | Explicit stores O+128/130/132 | + budget. (ceiling 180) | BASIC reads expected values |
+| 4 IN from target port | Port access | + latch-read! | Status changes as documented |
+| 5 Polling loop | 62h reads, NMI mask/restore | + nmi-mask! nmi-restore! | Edges observed on stimulus |
+| 6 Full capture | Complete routine | + strict=true (warns become errors) | All contract fields match |
+
+`R` = result region offset (default 128). `jr build` auto-derives
+`result` if omitted; `jr lint` REQUIRES `result` when the selfloc rule
+is active.
 
 If a stage fails, the defect is in the bytes added in that stage.
 Fix only that stage, then re-run.
@@ -215,6 +270,8 @@ first edge when NMI is active. Use a finite loop, mask NMI
 - Allowing a capture to swallow the arming keystroke. PCjr Enter emits an
 IR make/break frame; INPUT consumes before CALL O, but early capture
 can catch it. Add a delay or wait-for-edge.
+- Running `jr build` at stage 6 on a stage-1 stub without passing
+`stage=1` — the selfloc rule (min_stage 2) rejects it, not a bug.
 
 ## Debug Anchor Rule
 
@@ -232,6 +289,7 @@ handoff, `facts.md`, and `docs/test_log.md`, never here:
 - CH0CAL — known-good CH0 timestamp capture.
 - ENVSHAPE — known-good envelope capture with keyboard intact.
 - AGCPROBE — known-good envelope probe capture (AGCPROBE.BAS, CH0CAL ASM).
+- DEC1_ST2A — known-good PC0 polling gate.
 
 ## Anchor Ground Truth and Retype Path
 
@@ -240,6 +298,5 @@ handoff, `facts.md`, and `docs/test_log.md`, never here:
 never back-issues of sessions.
 - A program earns its anchor files in the same session it first passes
 hardware. Never defer anchor file creation.
-- DATA blocks must byte-match the ASM via `debug_asm`; hand-rolled
-bytes are a process violation.
-
+- DATA blocks must byte-match the ASM via `jr build` (UASM emits
+`.data`/`.bas`); hand-rolled bytes are a process violation.
