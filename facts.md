@@ -1360,3 +1360,27 @@ for W<=125 us). PC6 trailing edge = one-shot expiry, not carrier-off
 plus decay. t_r (burst start -> PC6 rise) unmeasured, suspected
 state-dependent. No internal test points; manual is block-diagram only.
 Consistency check only, not evidence.
+## 2026-08-29 · hardware_map · manual-verified
+
+Moved from platform skill v5 Rule 6. Authoritative register map for the
+PCjr 4860/4861.
+
+| Register | Address | Purpose | Status |
+|---|---|---|---|
+| PORT_A | 60h | 8255 Port A output | Confirmed + manual-verified |
+| PORT_B | 61h | 8255 Port B output | Confirmed + manual-verified |
+| PORT_C | 62h | 8255 Port C input | Confirmed + hardware-verified |
+| CMD_PORT | 63h | 8255 control | Confirmed |
+| TIMER0 | 40h | 8253 CH0, input 2.38636 MHz (14.31818/6 = CPU/2) | Confirmed; clock empirical |
+| TIMER1 | 41h | 8253 CH1, keyboard de-serialize, 1.1925 MHz when A0h D5=0 | manual-verified (entries 31/34) |
+| TIMER2 | 42h | 8253 CH2, sound source, IR test 40 kHz when A0h D6=1 | manual-verified (entries 31/34) |
+| TIM_CTL | 43h | 8253 control | Confirmed |
+| NMI_PORT | A0h | NMI mask / control | Confirmed + manual-verified |
+| INTA00 | 20h | 8259 PIC | Confirmed |
+| INTA01 | 21h | 8259 PIC | Confirmed |
+
+8253 decode: A6=1, A1/A0 select 40h-43h. Manual `Hex Range` print
+(40-47) is a formatting conflict; 44h-47h alias unverified.
+`; VERIFY: 44h-47h decode against PCjr Technical Reference`.
+
+Latch commands via 43h: CH0=00h, CH1=40h,
