@@ -479,3 +479,15 @@ result: PASS 2/2. Run 1: flag=2, r0=0xCDD0, r1=0xCA54, span 892 ct
   "verdict": "fail",
   "note": "trimodal AGC ripple; single-poll trailing edge insufficient"
 }
+# 2026-08-28 · bitsamp_ch1_544 · result
+
+contract: {"id":"BITSAMP-CH1-544","source":"BITSAMP.BAS (inline jr build)",
+"expected":{"return":"RETURNED OK","st":"3","bit":"0|1","ones":"0..5",
+"trail/sample nonzero","keyboard_after":"intact"},
+"regression":"IRPING -> CH0CAL","recovery":"cold_power_cycle"}
+result: st=3 bit=1 ones=3 rej=1, 3/3, keyboard intact.
+trail-sample deltas: 658 / 658 / 660 CH1 ticks (551.8 / 553.5 us at
+1.19318 MHz). Deterministic to 1 tick. Ones=3 (not 5): 2 of 5 majority
+polls LOW — sample on ragged edge of bit0 HIGH. Failed disproof of
+CH0 clock-conversion confound; correct decode, thin margin.
+Not anchored.

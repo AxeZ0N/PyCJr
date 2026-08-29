@@ -1318,3 +1318,45 @@ stages.
 - Lint thresholds read from `jr_rules.json`: entry / retf-count /
 epilogue / no-int21h (1), selfloc (2), budget (3), latch-read (4),
 nmi-mask / nmi-restore (5). warn rules block only under `strict=true`.
+## 2026-08-28 · ch1_clock_clean_12th · analysis
+
+14.31818/12 = 1.19318 MHz. The listing's 526-tick half-cell constant
+resolves to 526/1.19318 = 440.8 us, matching the 440 us half-cell
+exactly. Therefore 544 ticks = 456.1 us, and the listing comment
+"544 = 310 us" is wrong (authoring/OCR slip). "310 us" is the emitter's
+start_silence duration, a distinct quantity from KBDNMI's
+post-trailing-edge wait. The /12 clean divisor is the tiebreaker.
+supersedes: kbdnmi_comment_conflicts
+
+## 2026-08-28 · ch1_544_verbatim_bitsamp · empirical
+
+BITSAMP CH1-verbatim: NMI masked, KBDNMI I30 timing copied (mov al,40h
+/ out 43h / in 41h / in 41h), wait target 544 ticks, bit0 first-half
+5x majority. h (scancode 23h, bit0=1 biphase HIGH-first) -> bit=1 3/3,
+keyboard intact. ones=3 (2 of 5 polls LOW) - correct decode, thin margin.
+trail-sample delta 658/658/660 ticks (551.8/553.5 us), deterministic
+to 1 tick. Failed disproof of the CH0 clock-conversion confound.
+Not anchored: margin too thin, overshoot unexplained.
+
+## 2026-08-28 · wait_overshoot_ch1_anomaly · open item
+
+CH1-verbatim wait loop overshoots the 544-tick target by 114-116 ticks
+(~96 us). CH0 build overshot 77 CH0 counts (~32 us). The CH1 loop is
+shorter (mov cx,di vs push di/pop cx) yet overshoots more - backwards
+from cycle-count prediction, unexplained. This is why ones=3 not 5.
+Blocks robust decode until understood.
+
+## 2026-08-28 · ch1_masked_read_safe · empirical
+
+CH1 latch/read (mov al,40h / out 43h / in 41h / in 41h) with NMI masked
+(OUT A0h,00h) left keyboard intact 3/3. Consistent with timer1_hazard
+(active NMI is the risk); masking isolates the probe. Does not supersede.
+
+## 2026-08-28 · receiver_chain_waveform_model · analysis
+
+Black-box spitball: AGC = slow gain memory (release 220-440 us,
+H-compression under load). Demod = min-pulse one-shot (flat H=230 us
+for W<=125 us). PC6 trailing edge = one-shot expiry, not carrier-off
+plus decay. t_r (burst start -> PC6 rise) unmeasured, suspected
+state-dependent. No internal test points; manual is block-diagram only.
+Consistency check only, not evidence.
