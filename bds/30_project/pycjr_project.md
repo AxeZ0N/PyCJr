@@ -1,36 +1,25 @@
-# PyCJr Project (v5)
+# PyCJr Project (v6)
 
-This project targets the IBM PCjr 4860/4861 and the Pi-side IR sender
-(pigpio, GPIO18, 40 kHz carrier). No DOS is loaded by default; machine
-code runs through the Cartridge BASIC bridge.
+Targets the IBM PCjr 4860/4861 and the Pi-side IR sender (pigpio,
+GPIO18, 40 kHz carrier). No DOS by default; machine code runs through
+the Cartridge BASIC bridge.
 
-## Always-active rules
+## Always-on
 
-- Skills `pcjr_cartridge_basic_asm` and `pcjr_test_workflow` are
-  authoritative. If they are not present in context, re-request them
-  before emitting code.
+- Skills are authoritative: `pcjr_cartridge_basic_asm` (v6),
+  `pcjr_test_workflow` (v7), `pcjr_payload_generation`. If absent from
+  context, re-request them. Rules live in skills, never restated here.
 - Repo = source of truth; BDS library = runtime cache. Git wins on
-  drift. Read path is `grep_repo` MCP or user-pasted `git grep`.
-- The IBM PCjr Technical Reference (via `pcjr-tools` MCP) is the
-  hardware authority. The strip is noisy OCR.
-- Label every hardware fact: `manual-verified`, `empirical`,
-  `unverified`, or `conflict`. Never pass an unverified
-  port/segment/vector value without a `; VERIFY:` tag.
-- On hang, cold power-cycle. Never assume Ctrl+Alt+Del recovers.
-- Never emit the prohibited constructs listed in the platform skill.
-- When IR transport behavior is suspect, run IRPING first.
-- Ask before generating full files or running a new experiment.
-- Memory: no `pcjr_` key prefix; propose the full batch and wait for
-  approval; one batch per turn.
+  drift. Read path: `grep_repo` MCP or user-pasted `git grep`.
 
 ## Assumptions
 
 - All PCjr keyboard input arrives via the IR module. Pi passthrough:
   press or held key both emit make/break; held repeats frames. No
-  physical keyboard involved; same input channel.
+  physical keyboard; same input channel.
 - Default: no DOS. BIOS interrupts only unless DOS is confirmed.
 
-## Repo layout (v5 living repo)
+## Repo layout (v6 living repo)
 
 ```
 
@@ -49,29 +38,24 @@ mcp/  refs/  bin/  pyproject.toml
 
 ## Facts & session loop
 
-- `facts.md`: append-only, one fact per heading; updates use
-  `supersedes:` and never edit old lines.
-- `sessions/YYYY-MM-DD_scope.md`: decisions, rationale, loose ends,
-  next-session pointer.
-- End of session: assistant proposes facts.md appends + session file +
-  optional `docs/test_log.md` append. User approves, saves, runs
-  `bin/jr-commit.sh`.
-- New session: `git log --oneline -20` + latest session handoff.
+`facts.md` is append-only, one fact per heading, updates via
+`supersedes:`. Session files carry decisions, rationale, and
+next-session pointer. Full record-payload contract lives in
+`pcjr_payload_generation`; user ingests and commits. New session:
+`git log --oneline -5` + latest session handoff.
 
 ## Hardware state (pointer)
 
-Stable hardware facts live in `pcjr_cartridge_basic_asm` Rule 6 and
-Rule 7. Do not restate values here; point to the skill. CH0 clock is
-empirical and owned by the skill's hardware map.
+Stable hardware facts live in `facts.md` headings `hardware_map`,
+`ir_protocol_frozen`, `nmi_chain_detail`, `research_track_state`. Do
+not restate values here; query them. CH0 clock is empirical and owned
+by those headings.
 
 ## Open items (this file is the owner)
 
-1. ~~38-vs-40 edge variance root cause~~ RESOLVED: arming window
-   (`for fl=1 to 100`) swallowed frame 1's leading start burst.
-   See `facts.md` `open_3840`.
-2. Timer-2 IR-test wrap verification (manual 2-85..2-89).
-3. IR-test edge probe (mask NMI, A0h 40h, finite poll PC6).
-4. RAM demodulator chaining unrecognized frames to the stock path.
+1. Timer-2 IR-test wrap verification (manual 2-85..2-89).
+2. IR-test edge probe (mask NMI, A0h 40h, finite poll PC6).
+3. RAM demodulator chaining unrecognized frames to the stock path.
 
 ## Volatile measurements
 

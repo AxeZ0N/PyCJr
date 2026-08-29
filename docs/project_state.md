@@ -1,4 +1,4 @@
-# PyCJr — Project State (durable record) (v5)
+# PyCJr — Project State (durable record) (v6)
 
 Repo-resident durable record. Not BDS-imported. BDS loads the `bds/`
 package; this file backs it.
@@ -25,17 +25,15 @@ See `README.md` and `MANIFEST.md`. Do not duplicate the table here.
 
 ## Hardware state (pointer only)
 
-Stable hardware facts live in `bds/10_skills/pcjr_cartridge_basic_asm.md`
-Rule 6 (hardware map) and Rule 7 (NMI rules). CH0 clock is empirical and
-owned by the skill's hardware map; do not restate values here.
+Stable hardware facts live in `facts.md` headings `hardware_map` and
+`nmi_chain_detail`. CH0 clock is empirical and owned by
+`facts.md#hardware_map`; do not restate values here.
 
 ## Research log (pointer)
 
-- Phase 1 closed: raw IR at `62h` bit 6 verified empirically; PC6
-  manual-verified (entry 33). See `facts.md`.
-- Phase 2 closed (CH0CAL): CH0 latched-read edge timestamps verified.
-  Safe path `OUT 43h,00h` -> `IN 40h`. See `docs/ch0_calibration.md`.
-- Open items are owned by `bds/30_project/pycjr_project.md`.
+Phase status, empirical clocks, and closed/open items live in
+`facts.md` heading `research_track_state`. Open items are owned by
+`bds/30_project/pycjr_project.md`.
 
 ## Session hygiene
 
