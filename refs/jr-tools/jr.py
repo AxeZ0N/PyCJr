@@ -326,7 +326,7 @@ end start
 # BASIC DATA generation and parsing
 # ----------------------------------------------------------------------
 
-def generate_data_lines(binary: bytes, start_line: int = 1000) -> list:
+def generate_data_lines(binary: bytes, start_line: int = 1000, step: int = 10) -> list:
     """Return list of DATA lines (strings) including final -1."""
     lines = []
     line_num = start_line
@@ -334,7 +334,7 @@ def generate_data_lines(binary: bytes, start_line: int = 1000) -> list:
         chunk = binary[i:i+16]
         hex_values = [f"&H{byte:02X}" for byte in chunk]
         lines.append(f"{line_num} DATA " + ",".join(hex_values))
-        line_num += 1
+        line_num += step
     lines.append(f"{line_num} DATA -1")
     return lines
 

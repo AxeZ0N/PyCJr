@@ -115,8 +115,9 @@ code ends
 end start
 """)
     out_bin = os.path.join(tmpdir, "trivial.bin")
+    lst_file = os.path.join(tmpdir, "trivial.lst")
     uasm = "uasm"  # assume on PATH
-    cmd = [uasm, "-bin", "-Fl", "-Fo", out_bin, asm_src]
+    cmd = ["uasm", "-bin", f"-Fl={lst_file}", "-Fo", out_bin, asm_src]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     assert proc.returncode == 0, f"UASM failed: {proc.stderr}"
     with open(out_bin, "rb") as f:

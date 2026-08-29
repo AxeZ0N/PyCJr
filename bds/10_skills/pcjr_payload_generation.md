@@ -51,7 +51,7 @@ payload; supersede with `supersedes: <old_heading>` on its own line.
 - The Ground truth section lists anchor paths only, not listings.
 - No anchor path present means the session cannot close.
 - DATA blocks in `.BAS` must byte-match the corresponding `.ASM`;
-  regenerate via `jr-build`, never hand-roll.
+  regenerate via `jr build`, never hand-roll.
 
 ## test_log rules
 
