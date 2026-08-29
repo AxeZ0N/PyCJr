@@ -316,7 +316,7 @@ class PCjrIRSender:
 class PCjrEmulator(PCjrIRSender):
     """Outer character layer. Inherits transport and frame building."""
 
-    def __init__(self, chars_per_sec=50):
+    def __init__(self, chars_per_sec=65):
         super().__init__()
         self.char_interval_s = 1.0 / max(1, chars_per_sec)
         self._last_char_time = 0.0
@@ -325,7 +325,7 @@ class PCjrEmulator(PCjrIRSender):
         """Send one character as an atomic make+break sequence."""
         if ch in SCAN:
             self.send_key_press(SCAN[ch])
-            if ch == '\n': time.sleep(0.5)
+            if ch == '\n': time.sleep(0.15)
             return
 
         if ch.isupper() and ch.lower() in SCAN:
