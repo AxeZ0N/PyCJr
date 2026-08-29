@@ -476,7 +476,7 @@ class PCjrTestHarness(PCjrEmulator):
             time.sleep(self.post_run_wait_s)
             print(f"[harness] {label}: done", flush=True)
 
-    def run_suite(self, trials, battery_size=4, arm_delay_s=0.4):
+    def run_suite(self, trials, battery_size=4, arm_delay_s=0.4, load_delay=2):
         n_batches = (len(trials) + battery_size - 1) // battery_size
         for b, i in enumerate(range(0, len(trials), battery_size), 1):
             batch = trials[i:i + battery_size]
@@ -486,7 +486,7 @@ class PCjrTestHarness(PCjrEmulator):
                 f"{[t[0] for t in batch]}",
                 flush=True,
             )
-            self.run_battery(batch, arm_delay_s=arm_delay_s)
+            self.run_battery(batch, arm_delay_s=arm_delay_s, run_wait_s=load_delay)
             if b < n_batches:
                 input(f"[harness] transcribed battery {b}? press Enter for next battery... ")
             else:
