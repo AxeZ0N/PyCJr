@@ -1,110 +1,28 @@
 #!/usr/bin/env python3
-"""
-pcjr-tools MCP server — integrated guide for PCjr machine-code design. (v8)
+"""pcjr-tools MCP server (v9) - integrated guide for PCjr machine-code design.
 
-This server exposes three tools that together support the full
-PCjr Cartridge BASIC machine-code design and validation loop:
-
-    search_ref   Query the digitized IBM PCjr Technical Reference strip.
-    grep_repo    Search the PyCJr repository fact layer (facts.md, sessions/, docs/).
+Tools:
+    search_ref   Query the digitized IBM PCjr Technical Reference strip
+                 (prose; Appendix A excluded; pages.jsonl joined as metadata).
+    grep_repo    Read-only repo search over the PyCJr repo.
+    bios_grep    Read-only grep over refs/ibm_pcjr-bios.lst (flat 0000:0000..FFFF:FFFF).
     jr           Assemble, lint, extract, and verify bridge machine code.
 
-Use all three in concert:
-  1. Retrieve manual facts with search_ref.
-  2. Retrieve repo decisions with grep_repo.
-  3. Build and validate machine code with jr.
+Backend files (all relative to repo root):
+    refs/pcjr_technical_reference.txt   raw prose strip (segment_pages source)
+    refs/pages.jsonl                    derived axes/regions metadata, joined on page_id
+    refs/ibm_pcjr-bios.lst              flat BIOS listing dump (gitignored)
+    refs/pcjr_manual.py                 ManualStore (query/grep/peek/stats)
+    refs/pcjr_bios.py                   BiosStore (grep/peek/stats)
+    refs/pcjr_repo_grep.py              repo search dispatch
+    refs/pcjr_hex.py                    OCR hex-normalization helpers
+    refs/tech_ref_sanitize.py           segment_pages (single page attribution)
+    refs/jr-tools/jr.py                 machine-code byte pipeline
 
-All file paths in the jr tool are relative to the repository root.
-
---- search_ref ---
-Search the IBM PCjr Technical Reference strip (noisy OCR).
-
-mode:
-    query   English prose search. Needs 'query'.
-            Optional: context (default 3), max_pages (default 1).
-    peek    Raw entries by 1-based file position. Needs 'start' >= 1.
-            Optional: end.
-    stats   Diagnostic statistics. Optional: verbose (omit or true).
-
---- grep_repo ---
-Read-only repo search over facts.md, sessions/, and docs/ (plus whole
-repo for read/grep_all). A match is evidence, not automatically a fact.
-
-mode:
-    query     Fact-layer regex search. Needs 'query'.
-              Optional: context (default 2), literal (default false).
-    stats     Fact-layer file/line counts.
-    roots     Which fact-layer roots exist.
-    read      Full file by root-relative path, whole repo (text only,
-              hidden paths refused). Needs 'path'. JSON return.
-    grep_all  Regex search across whole repo (text files only, hidden
-              paths refused). Needs 'query'. JSON return; capped by
-              max_matches (default 50).
-
---- jr ---
-PCjr bridge machine-code pipeline: assemble, lint, extract, verify.
-
-The routine must satisfy the bridge contract:
-    - Entry prefix 0E 1F 55: push cs / pop ds / push bp
-    - Epilogue 5D CB: pop bp / retf
-    - Exactly one far RETF (CB)
-    - Self-location: call get_ip / pop bp / lea bp,[bp+R-6]
-    - Results stored at O+R; BASIC reads them via PEEK(VARPTR(A(0))+R)
-    - If port A0h or 62h is touched, restore NMI before RETF with:
-      IN AL,0A0h (clear latch), then OUT 0A0h,80h
-
-command:
-    build    Assemble SRC.asm with UASM, lint, then write SRC.bin,
-             SRC.data, and SRC.bas next to src. Needs 'src'.
-             Optional: stage (default 6), result (auto if omitted),
-             ceiling (default 180), rules (path to JSON rule file),
-             strict, uasm (default "uasm"), keep.
-             On success returns JSON with keys: status, bin_hex,
-             data_block, bas_source, errors, warnings.
-
-    lint     Lint FILE.bin against the stage-gated rule set.
-             Needs 'binfile'.
-             Optional: stage (default 6), result (REQUIRED if selfloc
-             rule is active), ceiling (default 180), rules, strict.
-             Returns JSON: {"status": "pass"|"warn",
-             "errors": [], "warnings": []}.
-             A non-pass result is returned as an error string.
-
-    verify   Compare .bas DATA bytes to .bin bytes. Needs 'bas' and 'bin'.
-             Returns JSON: {"match": bool, "expected_size": int,
-             "actual_size": int, "mismatches": [{"offset": int,
-             "expected": int|null, "actual": int|null}]}.
-
-    golden   Extract DATA bytes from .bas and write a binary file.
-             Needs 'bas'. Optional: out (default NAME.golden.bin).
-
-    dis      Disassemble FILE.bin with ndisasm. Needs 'binfile'.
-
-    data     Emit BASIC DATA lines from FILE.bin. Needs 'binfile'.
-
-    parse    Extract DATA bytes from .bas and return hex or write to
-             'out'. Needs 'bas'. Optional: out.
-
-Errors from jr are returned as: "ERROR (exit N):\n<message>".
-
---- Recommended design/validation workflow ---
-  1. Retrieve before emit:
-       - Use search_ref for manual facts (ports, bits, vectors).
-       - Use grep_repo for repo facts/decisions and session ground truth.
-  2. Construct bytes:
-       - Assemble a complete source with jr build (UASM owns encoding;
-         never hand-roll rel8/rel16).
-       - Review with jr dis (NDISASM) and gate with jr lint.
-  3. Lint the generated binary:
-       - jr lint FILE.bin --stage N --result R
-       - If selfloc rule is active, result is required.
-  4. Verify against anchors:
-       - jr golden ANCHOR.BAS --out /tmp/anchor.bin
-       - jr lint /tmp/anchor.bin --stage 6 --result R
-       - jr verify ANCHOR.BAS ANCHOR.bin
-  5. Gate each stage before advancing.
-       - If a stage fails, fix only that stage and re-run.
-       - If transport is suspect, regress with IRPING first.
+Note: search_ref peek indexes exclude Appendix A (the BIOS listing is a
+separate file and tool now). 1-based indexes are page positions in the
+prose store, NOT the old RefStore entry numbers that included the BIOS
+listing.
 """
 
 import json
@@ -120,12 +38,11 @@ HOST = os.environ.get("PCJR_HOST", "127.0.0.1")
 PORT_REF = int(os.environ.get("PCJR_PORT_REF", "8765"))
 
 REF_DIR = os.environ.get("PCJR_REF_DIR", str(_REPO_ROOT / "refs"))
-REF_FILE = os.path.join(REF_DIR, "deepseek_reference.txt")
-REFTOOL_FILE = os.path.join(REF_DIR, "pcjr_ref_tool.py")
-GREP_FILE = os.path.join(REF_DIR, "pcjr_repo_grep.py")
+MANUAL_FILE = os.path.join(REF_DIR, "pcjr_technical_reference.txt")
+BIOS_FILE = os.path.join(REF_DIR, "ibm_pcjr-bios.lst")
+PAGES_JSONL = os.path.join(REF_DIR, "pages.jsonl")
 JR_TOOLS_DIR = os.path.join(REF_DIR, "jr-tools")
 
-# Add both refs and refs/jr-tools to sys.path
 sys.path.insert(0, REF_DIR)
 sys.path.insert(0, JR_TOOLS_DIR)
 
@@ -137,11 +54,12 @@ except ImportError:
     raise
 
 try:
-    import pcjr_ref_tool as REFTOOL
     import pcjr_repo_grep as GREP
+    import pcjr_manual as MANUAL
+    import pcjr_bios as BIOS
     import jr as JR
 except ImportError as exc:
-    print("Missing pcjr_ref_tool.py, pcjr_repo_grep.py, or jr.py in PCJR_REF_DIR:", file=sys.stderr)
+    print("Missing grep/manual/bios/jr module in PCJR_REF_DIR:", file=sys.stderr)
     print(f"  expected ref dir: {REF_DIR}", file=sys.stderr)
     print(f"  expected jr-tools dir: {JR_TOOLS_DIR}", file=sys.stderr)
     print(f"  error: {exc}", file=sys.stderr)
@@ -160,12 +78,22 @@ mcp = FastMCP(
 )
 
 try:
-    REFSTORE = REFTOOL.RefStore(REF_FILE)
+    MANSTORE = MANUAL.ManualStore(MANUAL_FILE, PAGES_JSONL)
 except Exception as exc:
-    print(f"ERROR: cannot load reference strip {REF_FILE}: {exc}", file=sys.stderr)
+    print(f"ERROR: cannot load manual strip {MANUAL_FILE}: {exc}", file=sys.stderr)
     sys.exit(1)
 
-# --- search_ref ---------------------------------------------------------
+# The BIOS listing is gitignored and may be absent. Degrade gracefully
+# rather than refuse startup: bios_grep then reports a clear error.
+try:
+    BIOSSTORE = BIOS.BiosStore(BIOS_FILE)
+    BIOS_ERR = None
+except Exception as exc:
+    BIOSSTORE = None
+    BIOS_ERR = f"cannot load BIOS listing {BIOS_FILE}: {exc}"
+    print(f"WARNING: {BIOS_ERR} (bios_grep will report this)", file=sys.stderr)
+
+# --- search_ref -------------------------------------------------------------
 
 @mcp.tool()
 def search_ref(
@@ -175,31 +103,50 @@ def search_ref(
     max_pages: int = 1,
     start: Optional[int] = None,
     end: Optional[int] = None,
+    max_matches: int = 50,
+    raw: bool = False,
     verbose: Optional[bool] = None,
 ) -> str:
-    """Search the IBM PCjr Technical Reference strip.
+    """Search the IBM PCjr Technical Reference strip (prose; Appendix A excluded).
 
     mode:
-        query  English prose search. Needs 'query' (optional: context, max_pages).
-        peek   Raw entries by 1-based file position. Needs 'start' >= 1.
-        stats  Diagnostic statistics. Optional 'verbose' (omit or true).
+        query  Ranked prose search. Needs 'query'.
+               Optional: context (default 3), max_pages (default 1).
+        grep   Exhaustive line-attributed hits across pages. Needs 'query'.
+               Optional: context (default 3), max_matches (default 50).
+        peek   Raw page body by 1-based page index. Needs 'start' >= 1.
+               Optional: end.
+        stats  Diagnostic page counts. Optional: verbose (omit or true).
+
+    raw=true disables OCR hex normalization (default on for hex tokens).
+    Page results carry pages.jsonl axes/regions metadata under 'meta' when present.
     """
     try:
         if mode == "query":
             if not query:
-                return "ERROR: mode=query requires 'query'"
-            return REFSTORE.query(query, context, max_pages)
+                return json.dumps({"error": "mode=query requires 'query'"})
+            return json.dumps(
+                MANSTORE.query(query, int(context), int(max_pages), raw), indent=2
+            )
+        if mode == "grep":
+            if not query:
+                return json.dumps({"error": "mode=grep requires 'query'"})
+            return json.dumps(
+                MANSTORE.grep(query, int(context), int(max_matches), raw), indent=2
+            )
         if mode == "peek":
             if start is None or start < 1:
-                return "ERROR: mode=peek requires 'start' >= 1 (1-based entry index)"
-            return REFSTORE.peek(start, end)
+                return json.dumps(
+                    {"error": "mode=peek requires 'start' >= 1 (1-based page index)"}
+                )
+            return json.dumps(MANSTORE.peek(start, end), indent=2)
         if mode == "stats":
-            return REFSTORE.stats(bool(verbose))
-        return "ERROR: mode must be one of query|peek|stats"
-    except ValueError as exc:
-        return f"ERROR: {exc}"
+            return json.dumps(MANSTORE.stats(bool(verbose)), indent=2)
+        return json.dumps({"error": "mode must be one of query|grep|peek|stats"})
+    except Exception as exc:
+        return json.dumps({"error": str(exc)})
 
-# --- grep_repo ----------------------------------------------------------
+# --- grep_repo --------------------------------------------------------------
 
 @mcp.tool()
 def grep_repo(
@@ -208,41 +155,88 @@ def grep_repo(
     context: int = 2,
     literal: bool = False,
     path: Optional[str] = None,
-    max_lines: int = 2000,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
     max_matches: int = 50,
 ) -> str:
     """Read-only repo tool over the PyCJr repo.
 
     mode:
-        query     Fact-layer regex search (facts.md, sessions/, docs/).
-                  Needs 'query'.
-        stats     Fact-layer file/line counts.
-        roots     Which fact-layer roots exist.
-        read      Full file by root-relative path, whole repo (text only,
-                  hidden paths refused). Needs 'path'. JSON return.
-        grep_all  Regex search across whole repo (text files only, hidden
-                  paths refused). Needs 'query'. JSON return; capped by
-                  max_matches.
+        facts          Fact-layer grep (facts.md, sessions/, docs/).
+                       Needs 'query'. Optional: context, max_matches.
+        all            Whole-repo grep (text files only, hidden refused).
+                       Needs 'query'. Optional: context, max_matches.
+        files          Substring discovery of root-relative paths.
+                       Needs 'query'. Optional: max_matches.
+        ls             Directory listing. Optional: path (default repo root).
+        read           Full file by root-relative path. Needs 'path'.
+                       Optional: start_line, end_line (1-based).
+        facts_headings Heading index of facts.md (line, date, name, status).
+        stats          Fact-layer file/line counts.
+        roots          Which fact-layer roots exist.
     """
     try:
-        result = GREP.dispatch(
-            mode=mode,
-            query=query,
-            context=context,
-            literal=literal,
-            path=path,
-            max_lines=max_lines,
-            max_matches=max_matches,
+        return json.dumps(
+            GREP.dispatch(
+                mode=mode,
+                query=query,
+                context=context,
+                literal=literal,
+                path=path,
+                start_line=start_line,
+                end_line=end_line,
+                max_matches=max_matches,
+            ),
+            indent=2,
         )
-        if mode in ("read", "grep_all"):
-            return json.dumps(result, indent=2)
-        if isinstance(result, dict) and "text" in result:
-            return result["text"]
-        return json.dumps(result, indent=2)
     except Exception as exc:
-        return f"ERROR: {exc}"
+        return json.dumps({"error": str(exc)})
 
-# --- jr -----------------------------------------------------------------
+# --- bios_grep --------------------------------------------------------------
+
+@mcp.tool()
+def bios_grep(
+    mode: str,
+    query: Optional[str] = None,
+    context: int = 3,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
+    max_matches: int = 50,
+    raw: bool = False,
+) -> str:
+    """Grep the flat BIOS listing (refs/ibm_pcjr-bios.lst).
+
+    mode:
+        grep   Line-attributed hits. Needs 'query'.
+               Optional: context (default 3), max_matches (default 50).
+        peek   Raw lines by 1-based line number. Needs 'start' >= 1.
+               Optional: end.
+        stats  Line count of the listing.
+
+    raw=true disables OCR hex normalization (default on for hex tokens).
+    """
+    if BIOSSTORE is None:
+        return json.dumps({"error": BIOS_ERR})
+    try:
+        if mode == "grep":
+            if not query:
+                return json.dumps({"error": "mode=grep requires 'query'"})
+            return json.dumps(
+                BIOSSTORE.grep(query, int(context), int(max_matches), raw), indent=2
+            )
+        if mode == "peek":
+            if start is None or start < 1:
+                return json.dumps(
+                    {"error": "mode=peek requires 'start' >= 1 (1-based line number)"}
+                )
+            return json.dumps(BIOSSTORE.peek(start, end), indent=2)
+        if mode == "stats":
+            return json.dumps(BIOSSTORE.stats(), indent=2)
+        return json.dumps({"error": "mode must be one of grep|peek|stats"})
+    except Exception as exc:
+        return json.dumps({"error": str(exc)})
+
+# --- jr ---------------------------------------------------------------------
 
 @mcp.tool()
 def jr(
@@ -380,11 +374,14 @@ def jr(
 
 def main() -> None:
     print("pcjr-tools MCP server")
-    print(f"  reference strip: {REF_FILE}")
-    print(f"  ref tool:        {REFTOOL_FILE}")
-    print(f"  repo grep:       {GREP_FILE}")
+    print(f"  manual strip:    {MANUAL_FILE}")
+    print(f"  pages jsonl:     {PAGES_JSONL}")
+    print(f"  bios listing:    {BIOS_FILE}")
+    print(f"  repo grep:       {os.path.join(REF_DIR, 'pcjr_repo_grep.py')}")
+    print(f"  manual store:    {os.path.join(REF_DIR, 'pcjr_manual.py')}")
+    print(f"  bios store:      {os.path.join(REF_DIR, 'pcjr_bios.py')}")
     print(f"  jr module:       {os.path.join(JR_TOOLS_DIR, 'jr.py')}")
-    print(f"  entries loaded:  {len(REFSTORE.pages)}")
+    print(f"  pages loaded:    {len(MANSTORE.pages)}")
     print(f"  endpoint:        http://{HOST}:{PORT_REF}/mcp")
     print("Press Ctrl+C to stop.")
 
