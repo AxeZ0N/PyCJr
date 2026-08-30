@@ -1356,3 +1356,49 @@ pipeline run writes pages.jsonl by default, but marked page output still require
 
 ## 2026-08-29 · figureish_label_dominant_connector_caveat · analysis
 Label-dominant connector layout pages have figureish near 0 because LM rates English labels as prose. Dense line art is detected; sparse label layouts are not. Known limitation, not a defect.
+## 2026-08-29 · mcp_tool_surface_v9 · decision
+search_ref gains grep mode (line-attributed hits; pages.jsonl joined as
+meta). New tool bios_grep serves refs/ibm_pcjr-bios.lst. grep_repo modes
+renamed by scope: facts, all, files, ls, read, facts_headings, stats,
+roots. Stray path param dropped. jr unchanged.
+supersedes: 2026-08-24 · grep_repo_grep_all
+
+## 2026-08-29 · manual_port_spelling · empirical
+Prose manual spells ports as bare hex: grep 'A0h' = 0 hits, grep 'A0'
+~70 hits. Grep bare digits for register facts; do not include the h
+suffix. Documented as a retrieval trap in the platform skills.
+
+## 2026-08-29 · search_ref_peek_file_order · decision
+search_ref peek indexes are strip-file order, not physical page order;
+peek(1) = B-47. Accepted. peek is raw access only; locate content via
+query/grep.
+
+## 2026-08-29 · bios_lst_header_block · empirical
+refs/ibm_pcjr-bios.lst begins with an ASCII IBM header of ~25 lines;
+listing labels start past line 25. bios_grep grep/peek cover the whole
+file including the header, which can match header-text queries.
+
+## 2026-08-29 · facts_headings_status_field3 · decision
+facts_headings parse: date=field1, name=field2, status=field3; a fourth
+and later field is provenance, preserved as extra[]. Fixes the
+parts[-1] bug that mislabeled the status of 4+ field headings.
+
+## 2026-08-29 · mcp_server_v9_backend_paths · decision
+Server v9 loads refs/pcjr_technical_reference.txt via
+tech_ref_sanitize.segment_pages (Appendix A excluded), joins
+refs/pages.jsonl as metadata only, serves refs/ibm_pcjr-bios.lst via
+BiosStore. Archived pcjr_ref_tool.py / pcjr_repo_grep.py logic was
+re-derived into fresh modules, never imported.
+
+## 2026-08-29 · bds_memory_critical_only · policy
+BDS memory writes are restricted to critical, ultra-relevant facts
+only. Broad memories get injected far too often and accelerate
+hallucination. Prefer facts.md / sessions/ as the ledger; BDS memory is
+a hot pointer at most.
+refines: memory_batch_spec
+
+## 2026-08-29 · facts_heading_hygiene · open item
+facts.md contains three bare headings (skill_create_semantics,
+handoff_template, session_anchor_policy), one status outside the enum
+(listing-verified), and compound statuses (empirical + analysis,
+manual-verified + empirical). Normalize headings or extend the enum.
