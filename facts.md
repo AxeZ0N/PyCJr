@@ -1339,3 +1339,20 @@ PCjr 4860/4861.
 `; VERIFY: 44h-47h decode against PCjr Technical Reference`.
 
 Latch commands via 43h: CH0=00h, CH1=40h,
+## 2026-08-29 · document_pipeline_design · decision
+PCjr manual pipeline (pcjr_manual_pipeline.py) merges page segmentation, continuous page axes, and figure-region segmentation. Manual page ID is the canonical key for all pipeline records.
+
+## 2026-08-29 · page_axes_contract · decision
+Each page emits three continuous axes: toc_frac, listing_frac, figureish. No hard page-type enum; downstream thresholds its own cutoffs.
+
+## 2026-08-29 · figure_region_segmentation · decision
+Figure regions seed from language-model score <= -9.0 only. The structural multiplier was removed after it erased schematic part numbers. listing pages with listing_frac >= 0.30 are skipped. Regions require length >= 3 and low-line fraction >= 0.6.
+
+## 2026-08-29 · listing_axis_false_positive_video_pages · open item
+2-61 and 2-62 (Video Subsystem diagrams) report listing_frac ~0.4 despite being figures, not BIOS listings. is_listing_line matches some scan-line labels. Axis label is wrong for downstream though region suppression is unaffected.
+
+## 2026-08-29 · segmented_output_default_gap · open item
+pipeline run writes pages.jsonl by default, but marked page output still requires --seg-out. Decision pending: default pages.seg.txt beside pages.jsonl with --no-seg to suppress.
+
+## 2026-08-29 · figureish_label_dominant_connector_caveat · analysis
+Label-dominant connector layout pages have figureish near 0 because LM rates English labels as prose. Dense line art is detected; sparse label layouts are not. Known limitation, not a defect.
