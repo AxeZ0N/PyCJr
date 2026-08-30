@@ -1551,3 +1551,35 @@ Continuation order (next session): (1) `bios_grep` peek lines
 hardware run until one static retrieval matches. IRPING2 is the
 transport regression gate. Do not build the 5x sampler until the
 edge is shown stable.
+## 2026-08-30 · kbdnmi_overshoot_hardware_intrinsic · empirical
+
+CH1 wait-loop overshoot of the 544-tick target is 114-116 ticks (658/660
+delta) across three independent entry strategies: no-CLI re-arm, CLI
+frame-gap sync, and CLI one-shot. Within-build jitter is 1-2 ticks;
+cross-build spread is 10 ticks (~8 us). Interrupts, entry phase, and loop
+code are all excluded. The residual lives in the CH1 latch/read idiom or
+an unverified CH1 effective rate, neither yet measured.
+supersedes: wait_overshoot_ch1_anomaly
+
+## 2026-08-30 · kbdnmi_entry_phase_variance · empirical
+
+The I6 trailing-edge verify sees a ripple whose width depends on arm
+strategy, proving the demod envelope state at I3 differs with AGC history.
+FRAMEGAP re-arm (scans data LOWs before accepting frame gap): ripple 3-4,
+bwidth 551 us - silence merged HIGH. One-shot (first LOW->HIGH): ripple 1-2,
+bwidth 462 us - a data edge. Same Pi frame, different entry state.
+
+## 2026-08-30 · oneshot_armed_mid_frame · empirical
+
+One-shot build latched 552 CH1 ticks (462.6 us) from rise to I3 exit,
+equal to one full bit (440 us) plus ~22 us. It armed on a data edge,
+not the start burst. ripples 1-2 on I6 corroborate a false trailing
+edge. One-shot without a frame boundary is insufficient.
+
+## 2026-08-30 · gap_gated_low_first_pending · open item
+
+Gap-gated one-shot built (300 bytes, R=320): wait LOW first, measure
+LOW duration, accept as frame gap only if >= 1400 ticks (1173 us), then
+treat next rise as start burst, no re-scan. Fixes FRAMEGAP's high-first
+ordering bug. Awaiting hardware run to confirm gap ~1790 and bwidth in
+the stretched-burst band.

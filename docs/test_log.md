@@ -514,3 +514,33 @@ Not anchored.## 2026-08-30 · IRPING2_MIN · result
 }
 ```
 
+## 2026-08-30 · framegap_1000 · result
+{"id":"FRAMEGAP-1000","source":"FRAMEGAP.BAS inline jr build",
+"expected":{"return":"RETURNED OK","st":"3","gap":"~1790","bit":"1","ones":"4..5"},
+"result":{"st":3,"bit":0,"ones":1,"gap":[1020,1020,1020,1022,1022,1022],
+"delta":[658,658,658,660,660]},
+"verdict":"fail","note":"threshold 1000 accepts a mid-frame '10' data pair (~855 us), not the frame gap. Reference edge wrong; bit0 samples LOW half."}
+
+## 2026-08-30 · framegap_1400 · result
+{"id":"FRAMEGAP-1400","source":"FRAMEGAP.BAS inline jr build",
+"expected":{"return":"RETURNED OK","st":"3","gap":"~1790"},
+"result":{"st":2,"bit":0,"ones":0,"gap":[3437,3474],"ripple":null},
+"verdict":"fail","note":"correct frame boundary reached (idle+1500us gap), but I6 sync-errors on the start-burst trailing-edge ripple. Byte-identical I6 at this phase rejects the Pi envelope."}
+
+## 2026-08-30 · i6_instrument · result
+{"id":"FRAMEGAP-I6INSTR","source":"FRAMEGAP.BAS instrumented",
+"expected":{"ripple":"1..4","st":"2"},
+"result":{"ripple":[4,3,2,3,2,3,2,2],"st":2},
+"verdict":"informational","note":"I6 HIGH count is 2-3 sustained on re-arm builds, 1 narrow on one-shot. Ripple width tracks arm strategy, proving AGC-history-dependent entry state."}
+
+## 2026-08-30 · rise_stamp · result
+{"id":"FRAMEGAP-RISE","source":"FRAMEGAP.BAS rise-stamped",
+"expected":{"bwidth":"~260-350 ticks"},
+"result":{"bwidth":[-658,-658],"trail":[51442,10282],"rise":[52100,10940],"delta":null},
+"verdict":"fail","note":"bwidth 658 ticks = 551 us = stretched burst + merged silence. Re-arm leaves AGC holding HIGH through the 310 us silence."}
+
+## 2026-08-30 · oneshot · result
+{"id":"ONESHOT","source":"ONESHOT.BAS inline jr build",
+"expected":{"bwidth":"~260-350 ticks","st":"3"},
+"result":{"bwidth":[-552,-552,-552,-552],"ripple":[1,1,2,2],"st":2},
+"verdict":"fail","note":"552 ticks = 462 us = one full bit + 22 us. Armed on a data edge, not the start burst. Frame boundary is required for correct phase."}
