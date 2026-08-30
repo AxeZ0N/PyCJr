@@ -16,3 +16,10 @@ wheels/
 *.o
 *.vim
 *.bin
+*.pdf
+
+ibm_pcjr-bios.lst
+language_model.json
+pages.jsonl
+pcjr_technical_reference.txt
+tech_ref_pages.txt
