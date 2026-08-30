@@ -490,4 +490,27 @@ trail-sample deltas: 658 / 658 / 660 CH1 ticks (551.8 / 553.5 us at
 1.19318 MHz). Deterministic to 1 tick. Ones=3 (not 5): 2 of 5 majority
 polls LOW — sample on ragged edge of bit0 HIGH. Failed disproof of
 CH0 clock-conversion confound; correct decode, thin margin.
-Not anchored.
+Not anchored.## 2026-08-30 · IRPING2_MIN · result
+
+```json
+{
+"id": "IRPING2_MIN",
+"contract": {
+  "source": "BASLOAD.BAS + IRPING2.ASM",
+  "expected": { "return": "RETURNED OK", "result_byte": 3 },
+  "regression": "self (transport-only); CH0CAL stays functional primary",
+  "recovery": "cold_power_cycle"
+},
+"result": {
+  "loaded": 56,
+  "return": "RETURNED OK",
+  "result_byte": 3,
+  "keyboard": "intact",
+  "rising": 0,
+  "falling": 0,
+  "note": "rising/falling are meaningless on this probe; it writes only O+128."
+},
+"verdict": "pass"
+}
+```
+

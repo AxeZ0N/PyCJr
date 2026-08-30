@@ -1483,3 +1483,71 @@ supersedes: session_anchor_policy
 (61 bytes)" as a normative fixture. IRPING is retired and its DATA is
 not in the repo. Update the fixture entry to IRPING2_MIN after (and
 only after) IRPING2_MIN passes hardware. Open until then.
+## 2026-08-30 · irping2_min_hw_pass · empirical
+
+IRPING2_MIN hardware pass: `loaded 56 bytes`, `RETURNED OK`,
+`status= 3`, keyboard intact. Transport sanity confirmed (both
+polarities of 62h bit 6 sampled in one finite masked poll). The
+generic loader's rising/falling fields read 0 because the probe
+writes only O+128; they are meaningless on this probe and are
+dropped from the anchor runner.
+
+## 2026-08-30 · irping2_anchor · empirical
+
+IRPING2 anchored: `docs/anchors/IRPING2.BAS` (custom runner, no
+rising/falling lines) + `docs/anchors/IRPING2.ASM`. DATA block is
+56 bytes, byte-exact from `jr build stage=5`; runner-only edit, no
+re-emission of bytes. This is the new transport regression probe,
+replacing IRPING.
+
+## 2026-08-30 · irping_regression_superseded · decision
+
+`supersedes: irping_regression (platform skill Rule 5)`
+
+IRPING (61 bytes) retired as the transport regression. Replacement
+is IRPING2_MIN/IRPING2 (56 bytes, status=3 pass). Pending repo
+edits by user: (1) platform skill Rule 5 wording IRPING →
+IRPING2, re-import per `skill_create_semantics`; (2)
+`docs/jr_tool_spec.md` §8 fixture name IRPING → IRPING2.
+
+## 2026-08-30 · i30_wait_loop_pll · analysis
+
+Manual-verified from `bios_grep` (listing lines 3410–3448). The I30
+wait loop is a phase-locked loop, not a dumb countdown: on exit
+`SUB CX,DX` then `ADD DI,CX` carries the overshoot forward into the
+next wait. Overshoot does NOT accumulate across half-bits. The
+5-sample majority window (`CMP AH,3`) starts AT the 544-tick point
+and runs forward ~38 µs; it is not centered on the midpoint. Latch
+command is `40h` = latch CH1, two `IN AL,41h` reads, two NOPs.
+
+## 2026-08-30 · overshoot_loop_cost_ruled_out · analysis
+
+`supersedes: wait_overshoot_ch1_anomaly`
+
+Loop-cost hypothesis disproven by arithmetic from the listing body.
+Wait-loop iteration is ~70 cycles ≈ 17.5 CH1 ticks; the observed
+overshoot is 114–116 ticks ≈ 6.5× loop granularity. Loop cost
+cannot produce it. Because the I30 PLL carries overshoot forward,
+the disturbance is one-time on bit0's first-half sample only —
+consistent with ones=3 while h→bit=1 still decodes 3/3. The
+overshoot is a systematic (±1 tick) reference error, not loop cost
+and not noise.
+
+## 2026-08-30 · sync_reference_phase_hypothesis · open item
+
+H: the clone seeds DI (the reference clock capture) ~114 CH1 ticks
+(~95.5 µs) later than KBDNMI's reference edge from the I6
+carrier-off sync, so the 544-tick first wait starts late by a fixed
+frame-feature amount. Later bits self-heal via the I30 PLL
+carry-forward.
+
+F: the 114–116 tick overshoot is NOT accounted for by a ~95.5 µs
+feature (start burst / gap / carrier-off geometry) in
+`ir_protocol_frozen` or the listing.
+
+Continuation order (next session): (1) `bios_grep` peek lines
+0F80–0FB9 to locate KBDNMI's clock capture relative to the I6 sync;
+(2) `grep_repo` `ir_protocol_frozen` for burst/gap geometry. No
+hardware run until one static retrieval matches. IRPING2 is the
+transport regression gate. Do not build the 5x sampler until the
+edge is shown stable.
