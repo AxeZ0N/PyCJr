@@ -1583,3 +1583,16 @@ LOW duration, accept as frame gap only if >= 1400 ticks (1173 us), then
 treat next rise as start burst, no re-scan. Fixes FRAMEGAP's high-first
 ordering bug. Awaiting hardware run to confirm gap ~1790 and bwidth in
 the stretched-burst band.
+## 2026-08-30 · int02_write_quiescent_reopen · analysis
+
+The 2026-08-25 decision `int02_vector_write_ub` rests on ladder stages 5/5c
+whose listings are absent from the repo, and on the circular claim that
+stage 5c "never held a bogus vector" (no readback was performed; the write
+was never verified byte-exact, IVT-ordered, or two-word). The full S1.ASM in
+`sessions/2026-08-25_s1_nmi_intercept_sop.md` implements the write correctly:
+`OUT A0h,00h` mask, offset word first (`A3 0800`), segment second (`A3 0A00`),
+masked restore. S1 v1 failed on BP clobber (bridge defect, not the write); S1
+v2 rebooted in the arming window and was never root-caused before the ladder
+pivot. Mechanism candidate: torn-vector window between the two 16-bit stores,
+or NMI live during a store — not the write act itself. Rule 7 stands
+unmodified pending the `ivt_write_quiescent` disproof probe (readback-gated).
