@@ -319,7 +319,7 @@ def _facts_headings():
         if len(parts) >= 3:
             rec["status"] = parts[2]          # was parts[-1] — wrong for 4+ fields
             if len(parts) > 3:
-                ["extra"] = parts[3:]      # provenance, preserved not discarded
+                rec["extra"] = parts[3:]      # provenance, preserved not discarded
         headings.append(rec)
     return {"headings": headings, "count": len(headings)}
 

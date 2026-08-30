@@ -129,3 +129,39 @@ def test_bios_line_shape(bios):
             UserWarning,
         )
 
+# --- BIOS whitespace tolerance (2026-08-30) ---------------------------------
+
+def test_bios_grep_whitespace_collapse(tmp_path):
+    """Single-space needle must match column-padded listing text.
+
+    Regression for the false negative where ``PROC NEAR`` returned 0
+    hits against ``PROC    NEAR`` (four spaces). Collapse applies to
+    matching only; the recorded text keeps the original line.
+    """
+    p = tmp_path / "mini.lst"
+    p.write_text("036C                            BITS_ON_OFF PROC    NEAR\n",
+                 encoding="utf-8")
+    store = BIOS.BiosStore(p)
+    r = store.grep("PROC NEAR", context=0, max_matches=5)
+    assert r["total_hits"] == 1
+    assert r["matches"][0]["text"] == \
+        "036C                            BITS_ON_OFF PROC    NEAR"
+
+def test_bios_grep_preserves_column_spacing(tmp_path):
+    """Returned text must keep original column padding, not collapsed form."""
+    p = tmp_path / "mini.lst"
+    original = "036C                            BITS_ON_OFF PROC    NEAR"
+    p.write_text(original + "\n", encoding="utf-8")
+    store = BIOS.BiosStore(p)
+    r = store.grep("BITS_ON_OFF", context=0, max_matches=5)
+    assert r["matches"][0]["text"] == original
+    assert "    " in r["matches"][0]["text"], \
+        "column padding was collapsed in the returned text"
+
+def test_bios_grep_proc_near_corpus(bios):
+    """Corpus smoke: PROC NEAR must not false-negative on the real .lst.
+
+    This is the query that returned a clean zero before the collapse
+    change; it now resolves to 100+ PROC directives.
+    """
+    assert bios.grep("PROC NEAR", max_matches=3)["total_hits"] > 0

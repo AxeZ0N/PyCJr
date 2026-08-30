@@ -32,6 +32,17 @@ def _format_hits(records):
         out.append("---")
     return "\n".join(out)
 
+def _collapse_ws(s):
+    """Collapse runs of whitespace to single spaces, trimming edges.
+
+    The BIOS .lst pads columns with variable runs of spaces (e.g.
+    ``PROC    NEAR``). Matching the raw line against a single-spaced
+    needle false-negatives. Collapse both sides so ``PROC NEAR`` hits
+    ``PROC    NEAR``, while display text keeps original spacing.
+    """
+    return " ".join((s or "").split())
+
+
 class BiosStore:
     """Read-only store of the flat BIOS listing."""
 
@@ -43,8 +54,13 @@ class BiosStore:
             raise ValueError(f"empty BIOS listing: {path}")
 
     def grep(self, term, context=3, max_matches=50, raw=False):
-        """Line-attributed grep. raw=true disables hex normalization."""
-        rx, err = compile_pattern(term, raw)
+        """Line-attributed grep. raw=true disables hex normalization.
+
+        Query and line whitespace are both collapsed to single spaces
+        before matching (tolerant of column padding). Recorded text is
+        the ORIGINAL line; only the match test uses the collapsed form.
+        """
+        rx, err = compile_pattern(_collapse_ws(term), raw)
         if err:
             return {"error": err}
         if max_matches < 1:
@@ -52,7 +68,7 @@ class BiosStore:
         records = []
         total_hits = 0
         for i, ln in enumerate(self.lines, 1):
-            if rx.search(ln):
+            if rx.search(_collapse_ws(ln)):
                 total_hits += 1
                 if len(records) < max_matches:
                     lo = max(0, i - 1 - context)
@@ -70,7 +86,6 @@ class BiosStore:
             "truncated": len(records) < total_hits,
             "text": _format_hits(records),
         }
-
     def peek(self, start, end=None):
         """Raw lines by 1-based line number."""
         if start < 1:

@@ -1,4 +1,4 @@
-# IBM PCjr Cartridge BASIC & 8088 Assembly — Canonical Verified Skill (v6)
+# IBM PCjr Cartridge BASIC & 8088 Assembly — Canonical Verified Skill (v7)
 
 ## Activation
 
@@ -20,13 +20,22 @@ IR link.
 
 ## Primary Sources
 
-1. IBM PCjr Technical Reference — via `pcjr-tools` MCP (`search_ref`)
+1. IBM PCjr Technical Reference — via `pcjr-tools` MCP (`search_ref`
+   for prose; `bios_grep` for the ROM BIOS listing).
 2. IBM PCjr BASIC Reference
 3. Ralf Brown's Interrupt List (RBIL)
 
 Label every hardware fact: `manual-verified`, `empirical`,
 `unverified`, or `conflict`. Unverified port/segment/vector values must
 carry `; VERIFY: value against PCjr Technical Reference`.
+
+Retrieval traps:
+
+- The prose manual spells ports as BARE hex (`A0`, `41`, `62`), never
+  `A0h`. Grep bare digits when locating register facts.
+- Appendix A (ROM BIOS listing) is NOT in `search_ref`; it is the flat
+  file `refs/ibm_pcjr-bios.lst` served by `bios_grep`.
+- Full retrieval protocol lives in `pcjr_test_workflow`.
 
 ## Manual Locator
 

@@ -1402,3 +1402,84 @@ facts.md contains three bare headings (skill_create_semantics,
 handoff_template, session_anchor_policy), one status outside the enum
 (listing-verified), and compound statuses (empirical + analysis,
 manual-verified + empirical). Normalize headings or extend the enum.
+## 2026-08-30 · bios_lst_format · manual-verified
+
+The flat BIOS listing `refs/ibm_pcjr-bios.lst` (served by `bios_grep`)
+is a MASM-style `.LST`, OCR'd by GloriousCow 2026 from Technical
+Reference Appendix A. 11511 lines. Column layout by line type:
+
+- Header block: lines 1-7 banner (line 6 marks the ASM source column);
+  lines 9-25 A-3 page banner + EQUATES header. Content starts line 26.
+- EQU: `= VVVV ... LABEL EQU value ; comment`. The `= VVVV` column is
+  the equate VALUE (60H -> 0060), not an offset.
+- Directive (SEGMENT/ORG/LABEL/PROC/ENDP): 4-hex offset in col 0,
+  blank opcode-bytes column, directive right-aligned. Routines open
+  `PROC NEAR` and close `ENDP` — NEAR even for BIOS entries (farness
+  via the IVT far pointer, not a FAR proc).
+- Code: `OOOO BB BB ... [LABEL] MNEM OPERANDS ; comment`. Offset,
+  opcode bytes (2 hex each), optional label, mnemonic, operands.
+- Segment override appears IN the offset column: `06DC 26: C7 ...`.
+- Local labels are numeric-colon in the label column (`L13:`, `D3:`).
+- Data: `DW OFFSET label` / `DB` carry bytes in the opcode column.
+- `R` suffix on an operand = relocatable (symbol not resolved).
+- Comment-only lines: full-width `;`, no offset/bytes.
+
+Unverified: whether a fully-resolved operand ever appears WITHOUT the
+`R` suffix (all sampled memory operands were relocatable). Addresses
+are relative to segment ABS0 (SEGMENT AT 0) and DATA_AREA at 0400.
+
+## 2026-08-30 · bios_grep_whitespace_tolerance · manual-verified
+
+`refs/pcjr_bios.py::BiosStore.grep` now collapses whitespace runs to
+single spaces in both needle and haystack before matching, via
+`_collapse_ws = " ".join((s or "").split())`. Matching uses the
+collapsed form; the returned `text` field keeps the original
+column-aligned line.
+
+Trap that motivated it: grep was whitespace-sensitive. Single-space
+`"PROC NEAR"` returned 0 hits (truncated=false, a false no-match)
+against the listing's `PROC    NEAR` (four spaces). Multi-word
+single-space greps false-negatived. A capped result was never a true
+no-match; this one was a true no-match and still wrong.
+
+Live probe after the change: `"PROC NEAR"` returns 119 total_hits
+(first hits lines 1096 `BITS_ON_OFF PROC NEAR`, 1480 `Q35 PROC NEAR`).
+`(s or "")` restores the pre-existing null-query contract (`query=None`
+returns `{"error": "empty pattern"}`, not an AttributeError).
+
+Regression tests added to `test_greps.py`:
+`test_bios_grep_whitespace_collapse`, `test_bios_grep_preserves_column_spacing`,
+`test_bios_grep_proc_near_corpus`. Module docstring line 13 updated.
+
+## 2026-08-30 · irping2_transport_regression · decision
+
+IRPING is retired. It never had anchor files in `docs/anchors/`; its
+61-byte DATA existed only in history (byte-exact per pjasm selftest,
+57/57 ALL_PASS). The `session_anchor_policy` claim that IRPING is a
+"known anchor" was stale.
+
+Replacement: IRPING2_MIN, a minimal transport-only both-edge detector
+for port 62h bit 6. Mask NMI (OUT A0h,00h), dummy IN AL,0A0h to clear
+the latch, finite poll (CX=0FFFFh), set saw_high (bit0) on bit set /
+saw_low (bit1) on bit clear, early-exit when result byte = 3, restore
+NMI (OUT A0h,80h), RETF. Result byte at O+128; pass value 3. 56 bytes.
+
+`jr build stage=5` passed (errors [], warnings []); `jr dis` reviewed
+byte-exact. All invariants confirmed: entry 0E1F55, selfloc +0x7A
+(=122, no +128 trap), exactly one CB, no CD21/CF/E661, NMI masked
+before 62h poll, NMI restored before RETF. This is emission-gate pass
+ONLY — not hardware-verified. IRPING2 earns anchor files in the
+session where the PCjr returns result_byte=3.
+
+`ch0cal_primary_regression` architecture stands: CH0CAL is still the
+functional primary; the named transport-only regression is now
+IRPING2_MIN instead of IRPING.
+
+supersedes: session_anchor_policy
+
+## 2026-08-30 · jr_tool_spec_fixture_stale · open item
+
+`docs/jr_tool_spec.md` section 8 still names "IRPING stage-5 DATA
+(61 bytes)" as a normative fixture. IRPING is retired and its DATA is
+not in the repo. Update the fixture entry to IRPING2_MIN after (and
+only after) IRPING2_MIN passes hardware. Open until then.

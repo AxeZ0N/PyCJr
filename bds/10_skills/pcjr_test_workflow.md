@@ -1,4 +1,4 @@
-# PCjr Design / Test Workflow (v8)
+# PCjr Design / Test Workflow (v9)
 
 ## Activation
 
@@ -20,7 +20,7 @@ confirmation plus retrieval plan. Ask before generating.
 ## Loop Order (always)
 
 1. Spec first — contract before code.
-2. Retrieve before emit (grep_repo / search_ref).
+2. Retrieve before emit (grep_repo / search_ref / bios_grep).
 3. Generate in stages: bridge stub -> self-location -> result stores ->
    one `IN` from target port -> polling loop -> full capture.
 4. Gate each stage; do not advance on failure.
@@ -31,28 +31,51 @@ confirmation plus retrieval plan. Ask before generating.
 ## Retrieval Gate (mandatory)
 
 Before emitting any port, mode, segment, or vector value: locate the
-manual section, query `search_ref` or user paste, then label
+manual section, query the MCP tools or user paste, then label
 `manual-verified` / `empirical` / `unverified` / `conflict`. Never pass
 an unverified value without `; VERIFY:`. The assistant has no local
 shell; never claim it ran the util locally.
 
 MCP: server `pcjr-tools`, endpoint `http://localhost:8765/mcp`.
 
-Traps only (the full schema is injected every turn):
+Tool surface:
+
+- `search_ref` — prose manual (Appendix A excluded; pages.jsonl joined
+  as `meta`). Modes: `query` (ranked prose, front-matter skipped),
+  `grep` (line-attributed hits: page_id + line + context), `peek` (raw
+  page by 1-based index), `stats`.
+- `bios_grep` — flat BIOS listing `refs/ibm_pcjr-bios.lst`. Modes:
+  `grep` (line hits), `peek` (1-based line), `stats`.
+- `grep_repo` — repo. Modes: `facts`, `all`, `files`, `ls`, `read`,
+  `facts_headings`, `stats`, `roots`.
+- `jr` — byte pipeline. Needs `command`.
+
+Traps:
 
 - `verbose: false` drops the request — omit the field or pass true.
-- `peek` is 1-based; `start=0` returns an application error.
-- `search_ref query` searches prose, not register tables; use `peek`
-  for register/port/BIOS facts. Appendix A is the full BIOS dump.
-- Required fields: `search_ref` needs `mode`; `grep_repo` needs `mode`;
-  `jr` needs `command`.
+- `peek` is 1-based in `search_ref` and `bios_grep`; `start=0` errors.
+- `search_ref.peek` is STRIP-FILE ORDER, not physical page order:
+  peek(1)=B-47. Locate with `query`/`grep`; peek only a known page.
+- The prose spells ports as BARE hex (`A0`, `41`, `62`), never `A0h`.
+  Grep bare digits. (`A0h` = 0 hits; `A0` ~ 70.)
+- Hex tokens are OCR-normalized by default; `raw=true` opts out.
+- Appendix A is NOT in `search_ref`; it is the BIOS listing served by
+  `bios_grep`. First ~25 lines of the .lst are an ASCII header block;
+  labels start past line 25.
+- `pages.jsonl` is never a search index; it arrives as `meta` on page
+  results only.
+- All greps cap and report truthfully: `truncated` + `total_hits`/
+  `total`. A capped result is never a true no-match.
+- Required: `search_ref`, `grep_repo`, `bios_grep` need `mode`; `jr`
+  needs `command`.
 
 Fallback when MCP is down — ask the user to run and paste:
 
 ```
 
 git grep -n -i -E -C2 "<terms>" -- facts.md sessions docs
-python3 refs/pcjr_ref_tool.py refs/deepseek_reference.txt query "<term>" --context 3 --max-pages 1
+grep -n -i -E "<term>" refs/pcjr_technical_reference.txt
+grep -n -i -E "<term>" refs/ibm_pcjr-bios.lst
 
 ```
 
@@ -169,10 +192,20 @@ only that stage, then re-run.
 - Burying an unverified port/segment/vector without `; VERIFY:`.
 - Skipping IRPING when transport behavior looks wrong.
 - Assuming any recovery other than cold power-cycle.
-- Telling the assistant to run local `pcjr_ref_tool.py` — it cannot.
-- Trusting a manual value without search_ref output or pasted output.
+- Telling the assistant to run local tools/scripts itself — it has no
+  shell.
+- Trusting a manual value without search_ref/bios_grep output or
+  pasted output.
 - Treating a noisy OCR match as a clean manual fact.
 - Silently overwriting an empirical fact with a single garbled query.
+- Treating `search_ref.peek` indexes as physical page order; they are
+  strip-file order.
+- Grepping the prose for `A0h`-suffixed ports; the manual spells them
+  bare (`A0`).
+- Grepping Appendix A through `search_ref`; the BIOS listing lives in
+  `bios_grep`.
+- Reading a capped grep as a true no-match; check `truncated` and
+  `total_hits`.
 - Unbounded arm on 62h bit 6: KBDNMI de-serializes after the first
   edge when NMI is active. Mask NMI (`OUT A0h,00h`), finite loop,
   restore 80h before RETF.
