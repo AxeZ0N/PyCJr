@@ -1596,3 +1596,49 @@ v2 rebooted in the arming window and was never root-caused before the ladder
 pivot. Mechanism candidate: torn-vector window between the two 16-bit stores,
 or NMI live during a store — not the write act itself. Rule 7 stands
 unmodified pending the `ivt_write_quiescent` disproof probe (readback-gated).
+## 2026-08-30 · nmi_ptr_bios_word_only · manual-verified
+
+bios_grep confirms NMI_PTR (ABS0 SEGMENT AT 0, label at 0008) is a WORD
+label. Every write in the BIOS listing targets only the offset word via
+C7 06 0008: 04D3=0F78 (POST init), 06B6=F815 (RAM-test temp handler D11),
+06DC=0F78 (POST reset). The segment word at 000A is never written by the
+BIOS. Contrast KEY62_PTR (0120), which does get its segment explicitly:
+PUSH CS / POP AX / A3 0122. The BIOS treats NMI_PTR as a word, not a far
+vector. Source: bios_grep lines 68, 1344, 1631, 1649.
+
+## 2026-08-30 · stock_nmi_vector_empirical · empirical
+
+READONLY probe (pure BASIC DEF SEG 0 + PEEK(8..11); no machine code
+required) on a fresh boot reads 0000:0008 = 3960 (0F78), 0000:000A =
+61440 (F000). Stock INT 02h vector at Cartridge BASIC runtime is
+F000:0F78 on a clean boot, matching the BIOS POST write at 04D3. The
+segment half is populated despite no BIOS write to 000A.
+
+## 2026-08-30 · ivt_write_quiescent_sameboot · empirical
+
+Same-boot probe (BASIC pre-read + IVTWR asm write probe + BASIC
+post-read) on a fresh boot: pre = wr-readback = post = 3960:61440
+(F000:0F78), RETURNED OK, keyboard fine. Clean run per contract
+ivt_write_quiescent_sameboot; falsifier NOT observed. Verdict:
+failed_to_disprove — the hypothesis survived one disproof attempt.
+Not proven, not promoted to empirical fact. One clean
+counter-observation to the premise of the 2026-08-25
+int02_vector_write_ub decision, which remains unmodified.
+
+## 2026-08-30 · ivt_zero_vector_session_residue · conflict
+
+Earlier IVTWR run (same DATA bytes, non-fresh boot) read 0000:0000
+from 0008/000A with keyboard fine. Later READONLY and same-boot probes
+on fresh boots read F000:0F78. Two observations conflict. Leading
+explanation (unverified): session residue — the machine had been up
+through the day's KBDNMI experiments, the vector was already 0000:0000
+before IVTWR ran, so its "no-op restore" was in fact a real write.
+Untested; not promoted.
+
+## 2026-08-30 · nmi_chain_detail_pointer_drift · open item
+
+Rule 7 and the project doc point to facts.md heading nmi_chain_detail.
+facts_headings (196 entries) has no such heading; hardware_map (line
+1318) exists. Pointer drift — the NMI dispatch chain detail is not
+stored under the name the rules reference. Needs either a facts.md
+entry or a Rule 7 pointer correction.

@@ -544,3 +544,36 @@ Not anchored.## 2026-08-30 · IRPING2_MIN · result
 "expected":{"bwidth":"~260-350 ticks","st":"3"},
 "result":{"bwidth":[-552,-552,-552,-552],"ripple":[1,1,2,2],"st":2},
 "verdict":"fail","note":"552 ticks = 462 us = one full bit + 22 us. Armed on a data edge, not the start burst. Frame boundary is required for correct phase."}
+## 2026-08-30 · ivt_readonly · result
+
+{
+"id": "ivt_readonly",
+"run": "2026-08-30",
+"observed": {"loaded": 36, "return": "RETURNED OK",
+  "offset": 3960, "segment": 61440, "decode": "F000:0F78"},
+"manual_ref": "bios_grep 04D3 writes NMI_PTR offset 0F78; 000A never written",
+"verdict": "read_clean"
+}
+
+## 2026-08-30 · ivt_write_quiescent_sameboot · result
+
+{
+"id": "ivt_write_quiescent_sameboot",
+"run": "2026-08-30",
+"observed": {"loaded": 66, "pre": "3960:61440", "wr": "3960:61440",
+  "post": "3960:61440", "return": "RETURNED OK", "keyboard_after": "fine"},
+"clean_run": true,
+"falsifier_observed": false,
+"verdict": "failed_to_disprove"
+}
+
+## 2026-08-30 · ivt_write_quiescent · result (non-fresh boot)
+
+{
+"id": "ivt_write_quiescent",
+"run": "2026-08-30",
+"observed": {"loaded": 66, "return": "RETURNED OK",
+  "keyboard_after": "fine", "readback": "0000:0000"},
+"clean_run": false,
+"verdict": "no_result"
+}
