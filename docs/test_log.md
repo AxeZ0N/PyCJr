@@ -577,3 +577,14 @@ Not anchored.## 2026-08-30 · IRPING2_MIN · result
 "clean_run": false,
 "verdict": "no_result"
 }
+## 2026-08-30 · ivtwr_loop_a · result
+
+{"id":"ivtwr_loop_a","expected":{"return":"RETURNED OK","mismatch":0,"final":"3960:61440","keyboard":"alive"},"observed":{"return":"RETURNED OK","mismatch":0,"final":"3960:61440","keyboard":"alive"},"regression":"CH0CAL","recovery":"cold_power_cycle","loaded_bytes":115}
+
+## 2026-08-30 · ivtwr_loop_b · result
+
+{"id":"ivtwr_loop_b","expected":{"return":"RETURNED OK","mismatch":0,"final":"3960:61440","keyboard":"alive"},"observed":{"return":"RETURNED OK","mismatch":0,"final":"3960:61440","keyboard":"alive"},"regression":"CH0CAL","recovery":"cold_power_cycle","loaded_bytes":115}
+
+## 2026-08-30 · ivtwr_loop_race · disproof verdict
+
+{"id":"ivtwr_loop_race","hypothesis":"H — IVT write harmless quiescent; fatal only under active keyboard NMI","falsifier":"F — Mode B completes with keyboard alive AND mismatch=0","clean_run":"S — Mode A completes first: RETURNED OK, mismatch=0, keyboard alive","verdict":"disproved"}

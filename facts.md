@@ -1642,3 +1642,29 @@ facts_headings (196 entries) has no such heading; hardware_map (line
 1318) exists. Pointer drift — the NMI dispatch chain detail is not
 stored under the name the rules reference. Needs either a facts.md
 entry or a Rule 7 pointer correction.
+## 2026-08-30 · ivt_write_safe_active_nmi · empirical
+
+IVTWR-LOOP: 1024× byte-exact write/readback of saved vector (3960:61440)
+to 0000:0008/000A. Mode 0 (NMI masked) and mode 1 (NMI enabled, held-key
+stimulus) both RETURNED OK, mismatch=0, final vector 3960:61440, keyboard
+alive. Fresh boot each mode. Build: jr build stage 6, pass, no warnings.
+
+## 2026-08-30 · ivtwr_torn_vector_race_disproved · empirical
+
+H = "IVT write is harmless quiescent; fatal only under active keyboard
+NMI (torn-vector race)." F = "Mode B completes with keyboard alive and
+mismatch=0." F observed on clean run (mode A clean first). Verdict:
+DISPROVED. Caveat: NMI arrival mid-write inferred from held-key traffic,
+not measured directly.
+
+## 2026-08-30 · int02_write_act_safe · decision
+
+supersedes: 2026-08-25 · int02_vector_write_ub
+
+The INT 02h IVT write act (0000:0008/000A) is safe on a fresh boot:
+quiescent and active-NMI 1024× write/readback loops, mismatch=0, vector
+intact, keyboard alive. The 2026-08-25 kill is attributed to the known
+code defects (S1 DS=0 store bug writing 0000:0002/0000:0004; S1 v1 BP
+violation) whose listings were unverified, not to the write act itself.
+Custom INT 02h handler dispatch remains untested and is not pre-authorized
+by this decision.
