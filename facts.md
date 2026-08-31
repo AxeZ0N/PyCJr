@@ -1668,3 +1668,26 @@ code defects (S1 DS=0 store bug writing 0000:0002/0000:0004; S1 v1 BP
 violation) whose listings were unverified, not to the write act itself.
 Custom INT 02h handler dispatch remains untested and is not pre-authorized
 by this decision.
+## 2026-08-31 · skill_int02_patch_pending · open item
+
+`bds/10_skills/pcjr_cartridge_basic_asm.md` Rule 7 (line ~136) and
+Rule 9 (line ~165) still carry the 2026-08-25 claim that writing the
+INT 02h IVT kills the keyboard. Superseded by `int02_write_act_safe`.
+Patch spec emitted 2026-08-31: replace with a pointer to
+`int02_write_act_safe`; Rule 9 residual guardrail becomes "custom
+INT 02h handler dispatch — untested, not pre-authorized." Apply, then
+re-import per `skill_create_semantics`.
+
+## 2026-08-31 · faq_s17_irping_stale · open item
+
+`docs/FAQ.md` §17 ("When should I run IRPING?") still names the retired
+IRPING transport probe. Update heading and body to IRPING2 now that
+`irping_regression_superseded` is committed and IRPING2 is anchored
+(`docs/anchors/IRPING2.BAS` / `IRPING2.ASM`). Not previously tracked.
+
+## 2026-08-31 · byte_selftest_irping_golden_stale · open item
+
+`bin/byte_selftest.sh` line 2 comment says "vs IRPING golden." IRPING
+DATA is retired and absent from the repo. Decide whether to retire the
+script (pjasm-era, likely dead after the `jr` transition) or update the
+golden reference. Not previously tracked.
