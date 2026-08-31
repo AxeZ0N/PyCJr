@@ -24,7 +24,7 @@ confirmation plus retrieval plan. Ask before generating.
 3. Generate in stages: bridge stub -> self-location -> result stores ->
    one `IN` from target port -> polling loop -> full capture.
 4. Gate each stage; do not advance on failure.
-5. Regress first when transport is suspect: IRPING, then anchor.
+5. Regress first when transport is suspect: IRPING2, then anchor.
 6. Record the result; every run emits a result block.
 7. Recover cold on hang; never assume Ctrl+Alt+Del recovers.
 
@@ -112,13 +112,13 @@ Every generated routine ships a contract block:
 "id": "probe_id",
 "source": "FILE.BAS",
 "expected": { "return": "RETURNED OK", "...": "..." },
-"regression": "IRPING",
+"regression": "IRPING2",
 "recovery": "cold_power_cycle"
 }
 
 ```
 
-Fields generalize per routine; do not copy IRPING's expectations into
+Fields generalize per routine; do not copy IRPING2's expectations into
 a timer, video, or sound routine.
 
 ## Disproof Contract (mandatory)
@@ -190,7 +190,7 @@ only that stage, then re-run.
 - Emitting code without a contract block.
 - Advancing a stage without passing the previous gate.
 - Burying an unverified port/segment/vector without `; VERIFY:`.
-- Skipping IRPING when transport behavior looks wrong.
+- Skipping IRPING2 when transport behavior looks wrong.
 - Assuming any recovery other than cold power-cycle.
 - Telling the assistant to run local tools/scripts itself — it has no
   shell.
@@ -218,7 +218,7 @@ only that stage, then re-run.
 
 Before debugging a failing capture, re-run the last known-good probe
 with identical stimulus. Anchor passes -> transport sane, defect in
-changed code. Anchor fails -> run IRPING first. Change one variable per
+changed code. Anchor fails -> run IRPING2 first. Change one variable per
 iteration. Anchor identities -> `facts.md` heading `anchor_identities`.
 Recorded readings live in session handoff / facts / test_log, never
 here.

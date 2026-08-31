@@ -1,0 +1,77 @@
+{
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "handler-entry",
+      "kind": "prefix",
+      "pattern": "0E1F55",
+      "min_stage": 1,
+      "severity": "error",
+      "message": "nmi handler entry: expected push cs / pop ds / push bp (0E 1F 55); found {prefix}",
+      "rationale": "canonical bridge prologue; 8088 NMI entry already clears IF, no leading CLI"
+    },
+    {
+      "id": "retf-count",
+      "kind": "count",
+      "pattern": "CB",
+      "min_stage": 1,
+      "severity": "error",
+      "config": {"op": "eq", "value": 1},
+      "message": "exactly one far RETF (CB) required; found {count}, expected 1. The far-jump to KBDNMI must be the only RETF",
+      "rationale": "push bx / push ax / retf far-jump idiom; one CB only"
+    },
+    {
+      "id": "handler-epilogue",
+      "kind": "suffix",
+      "pattern": "5D5350CB",
+      "min_stage": 1,
+      "severity": "error",
+      "message": "nmi handler epilogue: expected pop bp / push bx / push ax / retf (5D 53 50 CB); found {suffix}",
+      "rationale": "chain exit: restore BP, far-jump to saved KBDNMI, never RETF-to-BASIC"
+    },
+    {
+      "id": "no-int21h",
+      "kind": "absent",
+      "pattern": "CD21",
+      "min_stage": 1,
+      "severity": "error",
+      "message": "INT 21h (CD 21) forbidden: DOS not assumed; found at offset {offset}",
+      "rationale": "platform-skill Rule 10"
+    },
+    {
+      "id": "no-iret",
+      "kind": "absent",
+      "pattern": "CF",
+      "min_stage": 1,
+      "severity": "warn",
+      "message": "possible IRET (CF) at offset {offset}; handler must far-jump to KBDNMI, not IRET. A CF immediate inside another instruction is a false positive",
+      "rationale": "NMI chain exit is far-jump, never IRET"
+    },
+    {
+      "id": "no-speaker",
+      "kind": "absent",
+      "pattern": "E661",
+      "min_stage": 1,
+      "severity": "warn",
+      "message": "possible OUT 61h (E6 61) at offset {offset}; PCjr sound is TI SN76496",
+      "rationale": "platform-skill Rule 10"
+    },
+    {
+      "id": "selfloc",
+      "kind": "selfloc",
+      "min_stage": 2,
+      "severity": "error",
+      "config": {"encodings": ["disp8", "disp16"]},
+      "message": "selfloc: lea bp,[bp+{found_disp}] yields result offset {found_r}; expected displacement {expected_disp} (R - 6 = {expected_disp})",
+      "rationale": "facts selfloc_pop_offset_semantics; +128 trap (2026-08-25)"
+    },
+    {
+      "id": "budget",
+      "kind": "budget",
+      "min_stage": 3,
+      "severity": "error",
+      "message": "budget: size {found_size} exceeds ceiling {ceiling}",
+      "rationale": "facts s4b1_raised_ceiling (180 bytes)"
+    }
+  ]
+}

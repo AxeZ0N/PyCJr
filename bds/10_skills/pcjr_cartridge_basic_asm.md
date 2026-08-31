@@ -112,12 +112,12 @@ get_ip:
 
 Results go at `O+128`, matching `PEEK(VARPTR(A(0))+128)` in BASIC.
 
-## Rule 5 — IRPING Regression
+## Rule 5 — IRPING2 Regression
 
-IRPING is the frozen 61-byte raw IR edge sampler for port `62h` bit 6.
-Re-run it first whenever hardware behavior is suspect. If IRPING passes,
-the transport is sane and the defect is in the new code, not the link.
-DATA block lives in `docs/anchors/`; `jr build` regenerates bytes.
+IRPING2 is the frozen 56-byte both-edge transport sampler for port `62h`
+bit 6; pass = status=3. Re-run it first whenever transport is suspect.
+IRPING2 passes -> transport sane, defect in new code. Anchors:
+`docs/anchors/IRPING2.BAS` / `IRPING2.ASM`; `jr build` regenerates bytes.
 
 ## Rule 6 — Hardware Map
 
@@ -133,8 +133,8 @@ active — kills the keyboard. Safe path: `OUT 43h,00h` (latch CH0) ->
 - Keyboard NMI vectors via INT `02h` at `0000:0008` -> KBDNMI.
 - Latch = 8255 PC0. Fires NMI only if A0h D7 = 1.
 - Clear = dummy `IN AL,0A0h`; restore = `OUT 0A0h,80h`.
-- Never write the INT 02h IVT (`0000:0008`): undefined behavior; the
-write act itself kills the keyboard (empirical, 2026-08-25).
+- INT 02h IVT write act (byte-exact write/readback of the saved vector)
+is safe on a fresh boot -> `facts.md` heading `int02_write_act_safe`.
 - Full manual dispatch chain (entries 32/34/35/92/93/94/233/338) ->
 `facts.md` heading `nmi_chain_detail`.
 
@@ -162,7 +162,7 @@ Never emit:
 - Variables created after `VARPTR(A(0))`
 - Any path that returns without re-enabling the keyboard:
 dummy `IN AL,0A0h` (clear latch), then `OUT 0A0h,80h` (restore NMI)
-- Writing the INT 02h IVT (`0000:0008`) — UB, kills the keyboard
+- Custom INT 02h handler dispatch — untested, not pre-authorized
 
 ## Research Track
 

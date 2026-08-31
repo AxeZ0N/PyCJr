@@ -440,14 +440,19 @@ def build(asm_text: str, *, stage=6, result=None, ceiling=180,
         bas_source += "\n" + data_block
 
         status = "pass" if not warnings else "warn"
-        return {
+        bin_hex = bytes_to_hex(code)
+        ret = {
             "status": status,
-            "bin_hex": bytes_to_hex(code),
+            "bin_hex": bin_hex,
             "data_block": data_block,
             "bas_source": bas_source,
             "errors": [],
             "warnings": warnings,
         }
+        if status == "pass":
+            ret["disasm"] = dis(bin_hex)
+        return ret
+
     # TemporaryDirectory cleans up all files automatically
 
 

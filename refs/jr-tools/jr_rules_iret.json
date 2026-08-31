@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "iret-entry",
+      "kind": "prefix",
+      "pattern": "0E1F55",
+      "min_stage": 1,
+      "severity": "error",
+      "message": "iret handler entry: expected push cs / pop ds / push bp (0E 1F 55); found {prefix}",
+      "rationale": "canonical NMI handler prologue; DS self-sufficient, BP preserved per Rule 1 S1 v1"
+    },
+    {
+      "id": "iret-retf-count",
+      "kind": "count",
+      "pattern": "CB",
+      "min_stage": 1,
+      "severity": "error",
+      "config": {"op": "eq", "value": 0},
+      "message": "iret handler must contain no far RETF (CB); found {count}, expected 0. NMI handlers return via IRET",
+      "rationale": "NMI entry pushes FLAGS/CS/IP; only IRET restores them; RETF returns into a corrupt frame"
+    },
+    {
+      "id": "iret-has-iret",
+      "kind": "count",
+      "pattern": "CF",
+      "min_stage": 1,
+      "severity": "error",
+      "config": {"op": "eq", "value": 1},
+      "message": "iret handler must contain exactly one IRET (CF); found {count}, expected 1",
+      "rationale": "single NMI exit path; an early IRET would skip the latch clear"
+    },
+    {
+      "id": "iret-epilogue",
+      "kind": "suffix",
+      "pattern": "5DCF",
+      "min_stage": 1,
+      "severity": "error",
+      "message": "iret handler epilogue: expected pop bp / iret (5D CF); found {suffix}",
+      "rationale": "restore BP before IRET per Rule 1"
+    },
+    {
+      "id": "no-int21h",
+      "kind": "absent",
+      "pattern": "CD21",
+      "min_stage": 1,
+      "severity": "error",
+      "message": "INT 21h (CD 21) forbidden: DOS not assumed; found at offset {offset}",
+      "rationale": "platform-skill Rule 10"
+    },
+    {
+      "id": "no-speaker",
+      "kind": "absent",
+      "pattern": "E661",
+      "min_stage": 1,
+      "severity": "warn",
+      "message": "possible OUT 61h (E6 61) at offset {offset}; PCjr sound is TI SN76496",
+      "rationale": "platform-skill Rule 10"
+    },
+    {
+      "id": "selfloc",
+      "kind": "selfloc",
+      "min_stage": 2,
+      "severity": "error",
+      "config": {"encodings": ["disp8", "disp16"]},
+      "message": "selfloc: lea bp,[bp+{found_disp}] yields result offset {found_r}; expected displacement {expected_disp} (R - 6 = {expected_disp})",
+      "rationale": "facts selfloc_pop_offset_semantics; +128 trap (2026-08-25)"
+    },
+    {
+      "id": "budget",
+      "kind": "budget",
+      "min_stage": 3,
+      "severity": "error",
+      "message": "budget: size {found_size} exceeds ceiling {ceiling}",
+      "rationale": "facts s4b1_raised_ceiling (180 bytes)"
+    }
+  ]
+}
