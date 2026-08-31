@@ -316,7 +316,7 @@ class PCjrIRSender:
 class PCjrEmulator(PCjrIRSender):
     """Outer character layer. Inherits transport and frame building."""
 
-    def __init__(self, chars_per_sec=65):
+    def __init__(self, chars_per_sec=60):
         super().__init__()
         self.char_interval_s = 1.0 / max(1, chars_per_sec)
         self._last_char_time = 0.0
@@ -325,7 +325,7 @@ class PCjrEmulator(PCjrIRSender):
         """Send one character as an atomic make+break sequence."""
         if ch in SCAN:
             self.send_key_press(SCAN[ch])
-            if ch == '\n': time.sleep(0.15)
+            if ch == '\n': time.sleep(0.25)
             return
 
         if ch.isupper() and ch.lower() in SCAN:
@@ -379,6 +379,14 @@ class PCjrEmulator(PCjrIRSender):
 
     def send_ctrl_break(self):
         self._modifier_tap(FN_SCAN, SCAN["b"])
+
+    def send_reset(self):
+        combo = [0x1D, 0x38, 0x53]
+        waves = []
+        for x in combo: waves.extend(self.build_frame(x))
+        for x in combo: waves.extend(self.build_frame(x|0x80))
+
+        self.send_wave(waves) 
 
     def send_fkey(self, n):
         if n not in FKEY_SCANCODES:
@@ -457,7 +465,7 @@ class PCjrTestHarness(PCjrEmulator):
         for ch in text:
             self.send_char(ch)
 
-    def run_battery(self, trials, arm_delay_s=0.4, cls_wait_s=1.0, run_wait_s=2.0):
+    def run_battery(self, trials, arm_delay_s=0.4, cls_wait_s=1.0, run_wait_s=4):
         print("[harness] send: cls", flush=True)
         self._send_line("cls\n")
         time.sleep(cls_wait_s)
@@ -476,7 +484,7 @@ class PCjrTestHarness(PCjrEmulator):
             time.sleep(self.post_run_wait_s)
             print(f"[harness] {label}: done", flush=True)
 
-    def run_suite(self, trials, battery_size=4, arm_delay_s=0.4, load_delay=2):
+    def run_suite(self, trials, battery_size=4, arm_delay_s=0.4, load_delay=6):
         n_batches = (len(trials) + battery_size - 1) // battery_size
         for b, i in enumerate(range(0, len(trials), battery_size), 1):
             batch = trials[i:i + battery_size]
@@ -582,6 +590,7 @@ def main():
         "--escape", help="send one ANSI escape sequence as hex, e.g. 1b5b41"
     )
     group.add_argument("--cc", action="store_true", help="Send Ctrl+C to PCJr")
+    group.add_argument("--reset", action="store_true", help="Send Ctrl+Alt+Del to PCJr")
     group.add_argument(
         "--stdin", action="store_true", help="stream stdin to the PCjr interactively"
     )
@@ -652,6 +661,8 @@ def main():
             emu.send_ansi_escape(bytes.fromhex(args.escape))
         elif args.cc:
             emu.send_ctrl_break()
+        elif args.reset:
+            emu.send_reset()
         elif args.fkey is not None:
             emu.send_fkey(args.fkey)
         else:

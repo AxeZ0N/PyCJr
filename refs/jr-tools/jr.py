@@ -441,13 +441,14 @@ def build(asm_text: str, *, stage=6, result=None, ceiling=180,
 
         status = "pass" if not warnings else "warn"
         bin_hex = bytes_to_hex(code)
-        ret = {
+        return {
             "status": status,
             "bin_hex": bin_hex,
             "data_block": data_block,
             "bas_source": bas_source,
             "errors": [],
             "warnings": warnings,
+            "disasm": dis(bin_hex),
         }
         if status == "pass":
             ret["disasm"] = dis(bin_hex)
