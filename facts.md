@@ -1691,3 +1691,123 @@ IRPING transport probe. Update heading and body to IRPING2 now that
 DATA is retired and absent from the repo. Decide whether to retire the
 script (pjasm-era, likely dead after the `jr` transition) or update the
 golden reference. Not previously tracked.
+## 2026-08-31 · jr_handler_ruleset_added · decision
+
+New `refs/jr-tools/jr_rules_handler.json` — NMI chain-handler lint class.
+Entry `0E 1F 55` (push cs / pop ds / push bp), epilogue `5D 53 50 CB`
+(pop bp / push bx / push ax / retf far-jump to KBDNMI), `retf-count == 1`,
+no latch-read/nmi-mask/nmi-restore rules (observer touches no port).
+Invoked as `jr build --rules refs/jr-tools/jr_rules_handler.json`.
+Rationale: bridge class demands `5D CB` RETF-to-BASIC; chain handler
+exits by far jump, not RETF. Distinct machine shape needs distinct rules.
+
+## 2026-08-31 · jr_iret_ruleset_added · decision
+
+New `refs/jr-tools/jr_rules_iret.json` — NMI IRET-handler lint class.
+Entry `0E 1F 55`, `retf-count == 0` (no CB), exactly one `CF`
+(iret-has-iret), epilogue `5D CF` (pop bp / iret), plus no-int21h,
+no-speaker, selfloc R-6, budget. Invoked as
+`jr build --rules refs/jr-tools/jr_rules_iret.json`.
+Rationale: NMI entry pushes FLAGS/CS/IP; only IRET restores the frame.
+RETF in an NMI handler is a corruption, not a return.
+
+## 2026-08-31 · jr_retf_count_cb_false_positive · analysis
+
+`retf-count` (scans for `CB`) false-positives on `8C CB` = `mov bx, cs`.
+The register field for BX in the `MOV r16, Sreg` encoding is `CB` as a
+data byte, not a RETF opcode. First hit 2026-08-31 in N1-A wrapper.
+Workaround: `push cs / pop bx` (`0E 5B`) avoids the byte. Same class as
+documented `no-iret`/`no-speaker` CF/E661 false positives; rule message
+should warn about `8C CB` specifically. Open item: patch message text.
+
+## 2026-08-31 · kbdnmi_ch1_latch_conflict · conflict
+
+ROM BIOS KBDNMI at `0FAB` executes `OUT TIM_CTL,40h` then
+`IN AL,TIMER+1` (latch + read CH1) while the NMI latch is still set —
+the exact operation platform-skill Rule 6 names as the keyboard-killing
+hard hazard. BIOS does this stock on every keystroke. Sources: BIOS
+listing `0FAB..0FB9` (manual-verified) vs skill Rule 6 (policy claim).
+The skill line is over-broad or context-dependent; do not cite it
+against CH1 reads until resolved. Does not block N1 ladder (observer
+touches neither A0h latch nor 41h).
+
+## 2026-08-31 · basload_256_multiplier_drift · open item
+
+`docs/anchors/BASLOAD.BAS` lines 170/180 use bare `256*peek(...)` under
+`DEFINT A-Z`. Correct float16-safe idiom per jr-tool spec §5 is `256!`.
+The drift only survives because observed segment high bytes are small.
+Anchors used this session; not silently fixed. Decision needed: patch
+BASLOAD.BAS or leave as historical anchor.
+
+## 2026-08-31 · n1a_masked_write_pass · empirical
+
+N1-A (112-byte self-restoring bridge) passed on a clean substrate after
+the paste/environment fix: mask NMI → save 0000:0008 → write CS:0000 →
+readback → verify offset+segment → restore → unmask → RETF. `verify=1`,
+keyboard alive, IRPING2 green before and after. Second independent pass
+of the INT 02h write act; consistent with `int02_write_act_safe`.
+This decision has no supersede — it extends the write-act evidence,
+it does not authorize custom dispatch.
+
+## 2026-08-31 · nmi_custom_dispatch_hostile · analysis
+
+Three custom-dispatch runs, three `no_result` outcomes, no clean pass:
+- N1-B0: 18-byte self-loc IRET handler. Screen corruption, dead keyboard.
+- N1-B1: 2-byte `E4 A0 CF` handler. Screen clean, keyboard dead.
+- N1-B2: no-key control of N1-B1. Identical failure to N1-B1.
+
+Reducing the handler to bare latch-clear+IRET did not clear the
+keyboard death — defect is upstream of the handler body, in dispatch or
+wrapper. Screen corruption DID clear when the self-loc body went away.
+NOT a disproof: all three runs are contaminated (`no_result`). The
+disproof question remains open. Boundary is sharp and recorded: masked
+write act passes (N1-A); every unmasked-fire variant has failed.
+Surviving hypothesis untested: frame completion by KBDNMI is mandatory,
+so swallowing a key without chaining desyncs the receiver. See
+sessions/2026-08-31_nmi_dispatch_ladder.md.
+</BDS:create_file>
+<BDS:create_file fileName="sessions/2026-08-31_nmi_dispatch_ladder.md">
+
+```markdown
+# Handoff — NMI custom-dispatch ladder (single scope)
+
+Date: 2026-08-31
+Scope: prove, by disproof, whether a custom INT 02h handler can safely fire on the PCjr.
+
+## Verified this session
+
+- Bridge ladder re-proven from clean substrate after paste/environment
+  freeze: L0 alive, loader, CALL, selfloc (result=42), A0h round-trip (result=43).
+- N1-A passed: masked INT 02h write/readback/restore, `verify=1`, keyboard alive, IRPING2 green before/after. Second empirical pass of the write act.
+- Two new jr rulesets: `jr_rules_handler.json` (chain class), `jr_rules_iret.json` (IRET class). Both pasted, server restarted, builds passed.
+- N1-B0/B1/B2 all `no_result`: see test_log. No clean dispatch pass.
+- `jr build --stage 2 --rules jr_rules_iret.json` correctly proved selfloc R-6 on the corrected (CLI-dropped) handler.
+
+## Open questions
+
+- Is the N1-B keyboard death caused by (a) unserviced NMI frame desync, or (b) a wrapper defect independent of dispatch? N1-B2 no-key control failed identically to N1-B1 — does NOT cleanly isolate; need N1-B3 stock-vector control.
+- Does background IR traffic exist even with no key pressed (idle/heartbeat/AGC edges)? Untested; would explain N1-B2 if true.
+- Is frame completion by KBDNMI mandatory? Surviving hypothesis, untested. If true, chain-to-KBDNMI is the only viable custom path.
+- Is `8C CB` (`mov bx,cs`) a `retf-count` false positive to patch in the rule message? (analysis recorded, message text not patched.)
+- CH1 latch conflict: resolve skill Rule 6 against BIOS `0FAB` stock behavior.
+
+## Loose ends
+
+- `jr_rules_iret.json` has no class for the 2-byte bare `E4 A0 CF` handler used in N1-B1/B2; reviewed by dis only, flagged as process note, not gated.
+- N1-B3 (stock-vector-live wrapper control) designed but NOT emitted — pending clean anchor report after the freeze.
+- BASLOAD.BAS `256*` drift and `jr_retf_count_cb_false_positive` are open items recorded in facts.
+- No anchors earned this session; no anchor files emitted.
+
+## Suggested next scope
+
+Cold power-cycle, re-run IRPING2 + N1-A to confirm clean machine. Then
+N1-B3: same wrapper, skip install (keep stock KBDNMI vector live through
+the delay), press a key. Splits wrapper-defect vs dispatch-defect in one
+run. If N1-B3 survives, next is the chain-to-KBDNMI probe. If it fails,
+bisect inside the wrapper.
+
+## Ground truth
+
+- docs/anchors/IRPING2.BAS / IRPING2.ASM — transport regression
+- docs/anchors/CH0CAL.ASM / CH0CAL.bas — functional primary regression
+- No new anchors this session.

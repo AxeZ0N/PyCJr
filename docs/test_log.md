@@ -587,4 +587,24 @@ Not anchored.## 2026-08-30 · IRPING2_MIN · result
 
 ## 2026-08-30 · ivtwr_loop_race · disproof verdict
 
-{"id":"ivtwr_loop_race","hypothesis":"H — IVT write harmless quiescent; fatal only under active keyboard NMI","falsifier":"F — Mode B completes with keyboard alive AND mismatch=0","clean_run":"S — Mode A completes first: RETURNED OK, mismatch=0, keyboard alive","verdict":"disproved"}
+{"id":"ivtwr_loop_race","hypothesis":"H — IVT write harmless quiescent; fatal only under active keyboard NMI","falsifier":"F — Mode B completes with keyboard alive AND mismatch=0","clean_run":"S — Mode A completes first: RETURNED OK, mismatch=0, keyboard alive","verdict":"disproved"}## 2026-08-31 · N1-B0 · no_result
+
+{"id":"N1B0","source":"N1B0.BAS","verdict":"no_result",
+ "reason":"18-byte self-loc IRET handler: screen corruption, dead keyboard after CALL. First crash confined to custom-INT-02h dispatch step.",
+ "recovery":"cold_power_cycle"}
+
+## 2026-08-31 · N1-B1 · no_result
+
+{"id":"N1B1","source":"N1B1.BAS","verdict":"no_result",
+ "reason":"2-byte bare E4 A0 CF handler: screen clean, keyboard dead after run. Reducing handler body did not clear the death — defect upstream of handler body.",
+ "recovery":"cold_power_cycle"}
+
+## 2026-08-31 · N1-B2 · no_result
+
+{"id":"N1B2","source":"N1B1.BAS (no-key control)","verdict":"no_result",
+ "reason":"identical failure to N1-B1 with no key pressed during delay. Does not isolate wrapper vs dispatch; N1-B3 stock-vector control required.",
+ "recovery":"cold_power_cycle"}
+</BDS:create_file>
+</BDS:LONG_WORK>
+
+Payload emitted: `COMMIT.txt`, `facts.append.md`, `sessions/2026-08-31_nmi_dispatch_ladder.md`, `docs/test_log.append.md`. No anchors — no probe earned a hardware pass this session. No memory batch proposed; say the word if you want one.
