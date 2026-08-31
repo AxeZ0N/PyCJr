@@ -1811,3 +1811,45 @@ bisect inside the wrapper.
 - docs/anchors/IRPING2.BAS / IRPING2.ASM — transport regression
 - docs/anchors/CH0CAL.ASM / CH0CAL.bas — functional primary regression
 - No new anchors this session.
+## 2026-08-31 · es_clobber_bridge_contract · empirical
+
+ES must be preserved across the Cartridge BASIC machine-code bridge.
+Controlled A/B, this session:
+
+- DI-based NMIPEEK without an ES save corrupted BASIC on every run —
+  `bytes` corruption signature, keyboard alive but frozen on string
+  operations (Enter/parse).
+- The same routine with `PUSH ES` after self-location and `POP ES`
+  before `RETF` passed cleanly on repeated runs: `returned ok`,
+  `m1=42`, `saved=3960:61440` (stock KBDNMI `0F78:F000`), keyboard
+  alive and echoed.
+
+ES clobber explains the original N1-A crash signature and the
+nondeterminism (byte-identical rebuild passed once, then corrupted —
+timing, not bytes). This fact extends `basic_bp_preserve_contract` to
+BP + ES; Rule 1 of the platform skill must be revised accordingly.
+
+supersedes: basic_bp_preserve_contract
+
+## 2026-08-31 · nmipeek_anchor_pass · empirical
+
+NMIPEEK passed hardware: masked read of the INT 02h vector with ES
+preserved and a DI-based result base. Observed `returned ok`,
+`m1=42`, `saved=3960:61440` (`0F78:F000`), keyboard alive and echoed.
+Ground truth: `docs/anchors/NMIPEEK.BAS` / `docs/anchors/NMIPEEK.ASM`.
+
+## 2026-08-31 · bp_clobber_theory_falsified · empirical
+
+Hypothesis "the N1-B/N1-A crash signature is caused by KBDNMI
+clobbering BP while BP holds the result base" is disproved. A DI-based
+variant (NMIPEEK, BP restored immediately after self-location, all
+stores through DI) still produced the same bytes-corruption signature.
+BP was not the killer; ES clobber is. See `es_clobber_bridge_contract`.
+
+## 2026-08-31 · n1a_onepass_anomaly · open item
+
+The original N1-A (112 bytes, no ES save) passed exactly once on
+hardware, then corrupted on a byte-identical rebuild. Under the
+ES-clobber contract it is expected to corrupt reliably; the single
+clean pass is unexplained. Do not cite N1-A as ground truth until the
+anomaly is resolved.

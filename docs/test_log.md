@@ -608,3 +608,26 @@ Not anchored.## 2026-08-30 · IRPING2_MIN · result
 </BDS:LONG_WORK>
 
 Payload emitted: `COMMIT.txt`, `facts.append.md`, `sessions/2026-08-31_nmi_dispatch_ladder.md`, `docs/test_log.append.md`. No anchors — no probe earned a hardware pass this session. No memory batch proposed; say the word if you want one.
+## 2026-08-31 · NMIPEEK ES A/B · result
+
+{
+"id":"nmipeek_es_ab",
+"source":"NMIPEEK.BAS",
+"hypothesis":"H — the bytes-corruption crash is caused by ES clobber across the bridge",
+"falsifier":"F — ES-preserved NMIPEEK still corrupts (same signature with PUSH/POP ES in place)",
+"clean_run":"S — returned ok, m1=42, saved=3960:61440, keyboard alive and echoes",
+"observed": {
+  "no_es_save": "bytes corruption, keyboard alive but frozen on string ops (every run)",
+  "es_preserved": "returned ok, m1=42, saved=3960:61440, keyboard alive (every run)"
+},
+"verdict":"failed_to_disprove"
+}
+
+## 2026-08-31 · NMIPEEK shift/overflow corrections · result
+
+{
+"id":"nmipeek_harness_fixes",
+"source":"NMIPEEK.BAS",
+"note":"First ES-preserved build had PUSH ES before self-location, shifting pop di from offset 6 to 7 and skewing all stores (saved read 0x7800:0x000F). Corrected to PUSH ES after self-location. Harness sg promoted to sg! because stock segment F000=61440 overflows DEFINT.",
+"recovery":"cold_power_cycle"
+}
