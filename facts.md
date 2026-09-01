@@ -1897,3 +1897,33 @@ entry+128, epilogue `07 5D CB`. NOT hardware-passed; not ground truth;
 no anchor files until it passes. Expected on a clean hardware run:
 status=42 (marker), rising=3960 (KBDNMI offset), falling=61440 (KBDNMI
 segment), keyboard alive; regression IRPING2.
+## 2026-08-31 · nmidisp_dispatch_observed · empirical
+
+NMIDISP Probe A: a custom INT 02h vector installed from the BASIC
+bridge dispatched on a single real IR keystroke and returned clean.
+Flag went 0 -> 1; BASIC printed the result line after the handler
+(interpreter intact past the IRET); keyboard dead by design (stock
+KBDNMI replaced, scancodes discarded); cursor still blinking (IF
+restored, INT 08h timer IRQ alive). Control run with no keystroke
+printed flag=0. IRPING2 status=3 passed before each run. First clean
+custom INT 02h dispatch in project history; the three prior no_result
+crashes (2026-08-30) were pre-Contract A and pre-jr-tooling-repair
+artifacts, not evidence the path is unusable.
+
+## 2026-08-31 · nmidisp_basic_coexistence · analysis
+
+A minimal NMI handler — push ds/ax/bp, set one flag byte at the result
+region, pop bp/ax/ds, iret — survived one disproof attempt: BASIC
+executed PEEK/PRINT after the handler returned and the cursor kept
+blinking, consistent with restored IF and intact interpreter state.
+NOT empirical, NOT manual-verified, NOT proven. Repeats plus the
+KBDNMI chain (Probe B) are required before any coexistence claim is
+promoted. The clean control run (flag=0, no spurious NMI in the window)
+weakens but does not eliminate the spurious-source concern.
+
+## 2026-08-31 · rule9_nmidisp_carveout · decision
+
+Rule 9 prohibition on custom INT 02h handler dispatch was lifted for
+the NMIDISP (Probe A) scope only, by user decision 2026-08-31. The
+prohibition remains on the books for all other scopes and for Probe B
+(no-op redirect -> JMP FAR F000:0F78) until separately authorized.
