@@ -1853,3 +1853,47 @@ hardware, then corrupted on a byte-identical rebuild. Under the
 ES-clobber contract it is expected to corrupt reliably; the single
 clean pass is unexplained. Do not cite N1-A as ground truth until the
 anomaly is resolved.
+## 2026-08-31 · contract_a_bridge_frozen · decision
+
+Bridge entry contract frozen as Contract A, implementing the Rule 1
+revision instructed by `es_clobber_bridge_contract`:
+
+- Entry: `PUSH CS` / `POP DS` / `PUSH BP` / `PUSH ES` — bytes `0E 1F 55 06`
+- Epilogue: `POP ES` / `POP BP` / `RETF` — bytes `07 5D CB`
+- `PUSH ES` lands immediately after `PUSH BP`; `POP ES` immediately before `POP BP`.
+- Selected over Contract B (push-ES-at-first-use, as in NMIPEEK v1) for
+  uniform, unconditional, trivially-lintable semantics.
+- Consequence: `get_ip` moves from offset 6 to offset 7; selfloc
+  displacement becomes `R - 7`, not `R - 6`.
+
+## 2026-08-31 · jr_rules_json_truncation · analysis
+
+`refs/jr-tools/jr_rules.json` was truncated on disk: the `nmi-restore`
+rule lost its `config`, `message`, and `rationale`, and the file ended
+mid-structure at line 107 (tab-indented `}` at 106, bare `}` at 107).
+The MCP server rejected every build at char 3725 before UASM ran —
+identical error across three distinct `asm_text` payloads, localizing
+the defect to the ruleset, not the assembly. Cause: paste lost the
+tail. Fix: re-emitted the file wholesale. Lesson: read back and verify
+long JSON after any paste.
+
+## 2026-08-31 · jr_selfloc_hardcoded_offset · analysis
+
+`jr.py` selfloc computed `expected_disp = R - 6` with a hardcoded 6,
+assuming the old 3-byte bridge entry. Contract A's 4-byte entry shifts
+`get_ip` to offset 7, so the correct displacement is `R - 7`. The
+checker rejected correct Contract A code (`lea bp,[bp+121]` — found_r
+127 vs expected 122). Fix: derive the entry offset from the located
+marker — `entry = idx + 3`, `expected_disp = R - entry`,
+`found_r = entry + disp`. Contract-proof: passes under both 3-byte and
+4-byte entries. Requires MCP restart (module import).
+
+## 2026-08-31 · nmipeek2_built_unverified · open item
+
+NMIPEEK2 (masked INT 02h vector read under Contract A) built and
+lint-passed at stage 6: 46 bytes, 0 errors, 0 warnings. Entry
+`0E 1F 55 06`, selfloc `lea bp,[bp+0x79]` (disp 121) giving result base
+entry+128, epilogue `07 5D CB`. NOT hardware-passed; not ground truth;
+no anchor files until it passes. Expected on a clean hardware run:
+status=42 (marker), rising=3960 (KBDNMI offset), falling=61440 (KBDNMI
+segment), keyboard alive; regression IRPING2.
