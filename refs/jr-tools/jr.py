@@ -249,8 +249,9 @@ def check_rule(rule: dict, data: bytes, stage: int, strict: bool,
         allowed_encodings = config.get("encodings", ["disp8", "disp16"])
         if encoding not in allowed_encodings:
             return False, (severity == "warn"), f"selfloc: encoding {encoding} not allowed"
-        expected_disp = R - 6
-        found_r = 6 + disp
+        entry = idx + 3
+        expected_disp = R - entry
+        found_r = entry + disp
         if disp != expected_disp:
             msg = message_template.format(found_disp=disp, found_r=found_r,
                                           expected_disp=expected_disp)
@@ -427,10 +428,13 @@ def build(asm_text: str, *, stage=6, result=None, ceiling=180,
         if R < code_len:
             raise JrError(f"Loader invariant failed: R={R} < code_len={code_len}", exit_code=5)
 
-        rules_list = load_rules(rules)
-        lint_result = lint(bytes_to_hex(code), stage=stage, result=R,
-                           ceiling=ceiling, rules=rules_list, strict=strict)
-        warnings = lint_result["warnings"]
+        if stage != 0:
+            rules_list = load_rules(rules)
+            lint_result = lint(bytes_to_hex(code), stage=stage, result=R,
+                               ceiling=ceiling, rules=rules_list, strict=strict)
+            warnings = lint_result["warnings"]
+        else:
+            warnings = "LINTING SKIPPED"
 
         data_block = data(bytes_to_hex(code))
 
