@@ -1927,3 +1927,68 @@ Rule 9 prohibition on custom INT 02h handler dispatch was lifted for
 the NMIDISP (Probe A) scope only, by user decision 2026-08-31. The
 prohibition remains on the books for all other scopes and for Probe B
 (no-op redirect -> JMP FAR F000:0F78) until separately authorized.
+## 2026-08-31 · int48_runtime_vector · manual-verified
+
+The runtime INT 48h (hex) vector is KEY62_INT at F000:10C6, not
+KEY_SCAN_SAVE at F000:F068. Exactly two writes to KEY62_PTR (IVT offset
+0120h) exist in the BIOS listing:
+
+- 04D9: MOV KEY62_PTR, OFFSET KEY_SCAN_SAVE — "POD INT HANDLER"; POST
+  diagnostic only.
+- 07C9: MOV KEY62_PTR, OFFSET KEY62_INT — "62 KEY CONVERSION"; installed
+  in the "SET UP OTHER INTERRUPTS AS NECESSARY" block after the vector
+  table copy loop (F7A).
+
+The 07C9 write supersedes the F068 stub before the runtime keyboard path
+is live. KBDNMI's success path (INT 48h at 0FF7) therefore reaches
+KEY62_INT at runtime, not the POST stub.
+
+## 2026-08-31 · kbdnmi_entry_contract · manual-verified
+
+KBDNMI (F000:0F78) entry contract, from a full routine read (0F78–1003):
+
+- Pushes SI, DI, AX, BX, CX, DX, DS, ES in that order and pops in reverse.
+  Save/restore is transparent: whatever register value is present on entry
+  is faithfully restored on IRET. A clobbered GPR therefore passes straight
+  back to the interrupted program.
+- Does NOT read ES in its body. The push at 0F80 and pop at 0FF9 bracket
+  no ES dereference.
+- Does NOT set DS on the success path. Only the error path (I9 at 1004)
+  calls DDS to set DS=0040h.
+- Success path (0FF7 INT 48h) relies on the INT 48h target to establish
+  its own DS.
+
+supersedes: handoff assumption that KBDNMI requires ES=DATA on entry.
+
+## 2026-08-31 · key62_int_ds_self · manual-verified
+
+KEY62_INT (F000:10C6) calls DDS (138B) at 10C8, establishing DS=0040h
+itself before any buffer write. Its header comment states the register
+contract explicitly: "IT IS ASSUMED THAT THIS ROUTINE IS CALLED FROM THE
+NMI DESERIALIZATION ROUTINE AND THAT ALL REGISTERS WERE SAVED IN THE
+CALLING ROUTINE. AS A CONSEQUENCE ALL REGISTERS ARE DESTROYED." KBDNMI is
+the saving caller. KEY62_INT contains no halt path (no OUT 0A0h,0 / no
+CALL E_MSG) in its first ~40 bytes.
+
+## 2026-08-31 · probe_b_noop_chain_pass · empirical
+
+The 57-byte zero-work redirect (installer + one far-indirect jmp handler)
+passes hardware: keyboard alive, keystroke echoed via INPUT after a single
+IR key. The handler touches no register, stores no flag, and at KBDNMI
+start SP is byte-identical to a stock NMI entry. See test_log
+probe_b_noop_bisect.
+
+## 2026-08-31 · probe_b_nonzero_work_defect · analysis
+
+Hypothesis: the Probe B defect lives in the handler's non-zero work (flag
+store, register saves, added cycles perturbing KBDNMI phase or stack),
+not in the stock chain. The no-op pass means this hypothesis SURVIVED one
+disproof attempt — it is not proven, not verified, not empirical.
+
+Supporting observations, in run order:
+- 74-byte AX-clobber variant → "Syntax error in 160" (AX corruption passed
+  through KBDNMI's transparent save/restore into BASIC).
+- 86-byte all-registers variant → hard freeze, no cursor (18-byte save
+  frame perturbed stack depth at KBDNMI entry).
+
+Both signatures vanish when the handler does zero work.
