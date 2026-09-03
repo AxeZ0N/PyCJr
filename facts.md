@@ -1992,3 +1992,11 @@ Supporting observations, in run order:
   frame perturbed stack depth at KBDNMI entry).
 
 Both signatures vanish when the handler does zero work.
+## 2026-09-03 · jr_lint_v2_refactor_spec · decision
+
+The `jr` lint v2 refactor spec plus implementation plan is authored and
+locked. Full normative content and explicit next-session instructions
+live in `docs/jr_lint_v2_refactor_spec.md`; that file is the source of
+truth for the implementing session. No code, no config, no file
+deletions, no fact supersedes were performed this session — all are
+deferred to the implementing session per that spec.
