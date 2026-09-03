@@ -1,14 +1,31 @@
 #!/usr/bin/env python3
-"""Self-verification tests for jr tool (Spec Section 8)."""
+"""Self-verification tests for jr tool (Spec Section 9, lint v2).
+
+Fixtures here are synthetic Contract-A test artifacts, NOT hardware
+anchors. Anchor regeneration for IRPING2/CH0CAL (pre-Contract-A) is a
+separate follow-on scope.
+"""
 
 import os
 import sys
 import subprocess
 import tempfile
-import shutil
 import filecmp
 
 JR_PATH = os.path.join(os.path.dirname(__file__), "jr")
+
+# Contract-A green bridge, R=128. 20 bytes.
+# 0E 1F 55 06  E8 00 00  5D  8D AE 7A 00  E4 A0  B0 80  E6 A0  07 5D CB
+GREEN_BRIDGE = "0E1F5506E800005D8DAE7A00E4A0B080E6A0075DCB"
+
+# Selfloc trap: lea bp,[bp+128] instead of +122.
+SELFLOC_BAD = "0E1F5506E800005D8DAE8000075DCB"
+
+# NMI mask (B0 00 E6 A0) present, restore absent.
+NMI_NO_RESTORE = "0E1F5506E800005D8DAE7A00B000E6A0075DCB"
+
+# Non-NMI routine: bridge entry + selfloc + epilogue only.
+NON_NMI = "0E1F5506E800005D8DAE7A00075DCB"
 
 def run_jr(args, cwd):
     """Run jr tool, return (returncode, stdout, stderr)."""
@@ -24,82 +41,67 @@ def write_bytes(path, hexstr):
     with open(path, "wb") as f:
         f.write(bytes.fromhex(hexstr))
 
-def test_f1_irping_passes(tmpdir):
-    hex_bytes = ("0E1F55E800005D8DAE7A00"
-                 "BA6200EC2440B400894600"
-                 "89C6B9307531DB31FFBA62"
-                 "00EC244039F0740A85F674"
-                 "0347EB014389C6E2EA895E"
-                 "02897E045DCB")
-    bin_path = os.path.join(tmpdir, "irping.bin")
-    write_bytes(bin_path, hex_bytes)
-    rc, stdout, stderr = run_jr(["lint", "irping.bin", "--result", "128", "--stage", "6"], tmpdir)
+def test_f1_green_bridge_passes(tmpdir):
+    bin_path = os.path.join(tmpdir, "green.bin")
+    write_bytes(bin_path, GREEN_BRIDGE)
+    rc, stdout, stderr = run_jr(
+        ["lint", "green.bin", "--result", "128", "--stage", "6"], tmpdir)
     assert rc == 0, f"F1 failed: rc={rc}, stderr={stderr}"
     assert "PASS" in stdout
+    assert "shape=bridge" in stdout
     print("F1 PASS")
 
 def test_f2_selfloc_trap_fails(tmpdir):
-    hex_bytes = "0E1F55E800005D8DAE80005DCB"
     bin_path = os.path.join(tmpdir, "selfloc_bad.bin")
-    write_bytes(bin_path, hex_bytes)
-    rc, stdout, stderr = run_jr(["lint", "selfloc_bad.bin", "--result", "128", "--stage", "6"], tmpdir)
+    write_bytes(bin_path, SELFLOC_BAD)
+    rc, stdout, stderr = run_jr(
+        ["lint", "selfloc_bad.bin", "--result", "128", "--stage", "6"], tmpdir)
     assert rc == 4, f"F2 expected rc=4, got {rc}"
     assert "selfloc" in stderr
     assert "expected displacement 122" in stderr
-    assert "128" in stderr
-    # or more specifically:
     assert "lea bp,[bp+128]" in stderr
     print("F2 PASS")
 
 def test_f3_missing_nmi_restore(tmpdir):
-    hex_bytes = "0E1F55E800005D8DAE7A00B000E6A05DCB"
     bin_path = os.path.join(tmpdir, "nmi_missing.bin")
-    write_bytes(bin_path, hex_bytes)
-    # without --strict: should be WARN and rc=0
-    rc, stdout, stderr = run_jr(["lint", "nmi_missing.bin", "--result", "128", "--stage", "5"], tmpdir)
-    assert rc == 0, f"F3 (non-strict) expected rc=0, got {rc}"
+    write_bytes(bin_path, NMI_NO_RESTORE)
+    rc, stdout, stderr = run_jr(
+        ["lint", "nmi_missing.bin", "--result", "128", "--stage", "5"], tmpdir)
+    assert rc == 0, f"F3 (non-strict) expected rc=0, got {rc}: {stderr}"
     assert "WARN" in stderr
     assert "NMI restore" in stderr
-    # with --strict: should be rc=4
-    rc2, _, stderr2 = run_jr(["lint", "nmi_missing.bin", "--result", "128", "--stage", "5", "--strict"], tmpdir)
+    rc2, _, stderr2 = run_jr(
+        ["lint", "nmi_missing.bin", "--result", "128", "--stage", "5",
+         "--strict"], tmpdir)
     assert rc2 == 4, f"F3 (strict) expected rc=4, got {rc2}"
     assert "NMI restore" in stderr2
     print("F3 PASS")
 
 def test_f4_non_nmi_passes(tmpdir):
-    hex_bytes = "0E1F55E800005D8DAE7A005DCB"
     bin_path = os.path.join(tmpdir, "non_nmi.bin")
-    write_bytes(bin_path, hex_bytes)
-    rc, stdout, stderr = run_jr(["lint", "non_nmi.bin", "--result", "128", "--stage", "5"], tmpdir)
-    assert rc == 0, f"F4 expected rc=0, got {rc}"
+    write_bytes(bin_path, NON_NMI)
+    rc, stdout, stderr = run_jr(
+        ["lint", "non_nmi.bin", "--result", "128", "--stage", "5"], tmpdir)
+    assert rc == 0, f"F4 expected rc=0, got {rc}: {stderr}"
     assert "PASS" in stdout
     print("F4 PASS")
 
 def test_f5_data_roundtrip(tmpdir):
-    hex_bytes = ("0E1F55E800005D8DAE7A00"
-                 "BA6200EC2440B400894600"
-                 "89C6B9307531DB31FFBA62"
-                 "00EC244039F0740A85F674"
-                 "0347EB014389C6E2EA895E"
-                 "02897E045DCB")
-    bin_path = os.path.join(tmpdir, "irping.bin")
-    write_bytes(bin_path, hex_bytes)
-    # generate DATA file
-    rc, data_out, _ = run_jr(["data", "irping.bin"], tmpdir)
+    bin_path = os.path.join(tmpdir, "green.bin")
+    write_bytes(bin_path, GREEN_BRIDGE)
+    rc, data_out, _ = run_jr(["data", "green.bin"], tmpdir)
     assert rc == 0
-    data_file = os.path.join(tmpdir, "irping.data")
+    data_file = os.path.join(tmpdir, "green.data")
     with open(data_file, "w") as f:
         f.write(data_out)
-    # parse it back
     parsed_bin = os.path.join(tmpdir, "roundtrip.bin")
-    rc, _, stderr = run_jr(["parse", "--out", "roundtrip.bin", "irping.data"], tmpdir)
+    rc, _, stderr = run_jr(
+        ["parse", "--out", "roundtrip.bin", "green.data"], tmpdir)
     assert rc == 0, f"parse failed: {stderr}"
-    # compare
     assert filecmp.cmp(bin_path, parsed_bin), "roundtrip mismatch"
     print("F5 PASS")
 
 def test_f6_uasm_padding_selftest(tmpdir):
-    # Create asm source with only retf in canonical skeleton
     asm_src = os.path.join(tmpdir, "trivial.asm")
     with open(asm_src, "w") as f:
         f.write("""\
@@ -116,18 +118,65 @@ end start
 """)
     out_bin = os.path.join(tmpdir, "trivial.bin")
     lst_file = os.path.join(tmpdir, "trivial.lst")
-    uasm = "uasm"  # assume on PATH
     cmd = ["uasm", "-bin", f"-Fl={lst_file}", "-Fo", out_bin, asm_src]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     assert proc.returncode == 0, f"UASM failed: {proc.stderr}"
     with open(out_bin, "rb") as f:
         data = f.read()
-    assert len(data) == 1 and data[0] == 0xCB, f"padding check failed: got {data.hex()}"
+    assert len(data) == 1 and data[0] == 0xCB, \
+        f"padding check failed: got {data.hex()}"
     print("F6 PASS")
+
+def test_f7_stage0_legal(tmpdir):
+    bin_path = os.path.join(tmpdir, "green.bin")
+    write_bytes(bin_path, GREEN_BRIDGE)
+    rc, stdout, stderr = run_jr(
+        ["lint", "green.bin", "--stage", "0"], tmpdir)
+    assert rc == 0, f"F7 expected rc=0, got {rc}: {stderr}"
+    assert "PASS" in stdout
+    assert "LINTING SKIPPED" not in stdout
+    print("F7 PASS")
+
+def test_f8_handler_rejects_stage(tmpdir):
+    bin_path = os.path.join(tmpdir, "green.bin")
+    write_bytes(bin_path, GREEN_BRIDGE)
+    rc, _, stderr = run_jr(
+        ["lint", "green.bin", "--shape", "handler", "--stage", "2"], tmpdir)
+    assert rc == 1, f"F8 expected rc=1, got {rc}"
+    assert "stage" in stderr.lower()
+    print("F8 PASS")
+
+def test_f9_rules_retired(tmpdir):
+    bin_path = os.path.join(tmpdir, "green.bin")
+    write_bytes(bin_path, GREEN_BRIDGE)
+    rc, _, stderr = run_jr(
+        ["lint", "green.bin", "--rules", "old.json"], tmpdir)
+    assert rc == 1, f"F9 expected rc=1, got {rc}"
+    assert "use --shape" in stderr
+    print("F9 PASS")
+
+def test_f10_only_skip_compose(tmpdir):
+    bin_path = os.path.join(tmpdir, "green.bin")
+    write_bytes(bin_path, GREEN_BRIDGE)
+    # --only entry runs just the prefix check; green bridge passes.
+    rc, stdout, stderr = run_jr(
+        ["lint", "green.bin", "--result", "128", "--stage", "6",
+         "--only", "entry"], tmpdir)
+    assert rc == 0, f"F10 (only) expected rc=0, got {rc}: {stderr}"
+    assert "rules=entry" in stdout
+    # --skip entry on a selfloc-bad fixture still fails on selfloc.
+    bad_path = os.path.join(tmpdir, "selfloc_bad.bin")
+    write_bytes(bad_path, SELFLOC_BAD)
+    rc2, _, stderr2 = run_jr(
+        ["lint", "selfloc_bad.bin", "--result", "128", "--stage", "6",
+         "--skip", "entry"], tmpdir)
+    assert rc2 == 4, f"F10 (skip) expected rc=4, got {rc2}"
+    assert "selfloc" in stderr2
+    print("F10 PASS")
 
 def main():
     with tempfile.TemporaryDirectory() as tmpdir:
-        test_f1_irping_passes(tmpdir)
+        test_f1_green_bridge_passes(tmpdir)
     with tempfile.TemporaryDirectory() as tmpdir:
         test_f2_selfloc_trap_fails(tmpdir)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -138,6 +187,14 @@ def main():
         test_f5_data_roundtrip(tmpdir)
     with tempfile.TemporaryDirectory() as tmpdir:
         test_f6_uasm_padding_selftest(tmpdir)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_f7_stage0_legal(tmpdir)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_f8_handler_rejects_stage(tmpdir)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_f9_rules_retired(tmpdir)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_f10_only_skip_compose(tmpdir)
     print("All tests passed.")
 
 if __name__ == "__main__":

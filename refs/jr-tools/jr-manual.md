@@ -12,7 +12,7 @@ Specification: [`../../docs/jr_tool_spec.md`](../../docs/jr_tool_spec.md)
 
 - Python 3 (standard library only)
 - `uasm` on PATH (or `--uasm /path/to/uasm`)
-- `ndisasm` on PATH for `jr dis`
+- `ndisasm` on PATH for `jr dis` and the lint decode pass
 
 **Setup**
 
@@ -41,6 +41,7 @@ Create a bridge source `demo.asm` using the canonical skeleton:
         push cs
         pop  ds
         push bp
+        push es
         call get_ip
     get_ip:
         pop  bp
@@ -49,6 +50,7 @@ Create a bridge source `demo.asm` using the canonical skeleton:
         in   al, 0A0h              ; clear keyboard latch
         mov  al, 80h
         out  0A0h, al              ; re-enable NMI
+        pop  es
         pop  bp
         retf
 
@@ -61,6 +63,7 @@ Build it:
 
 Output:
 
+    shape=bridge stage=6 rules=entry,retf-count,epilogue,no-int21h,no-iret,no-speaker,selfloc,budget,latch-read,nmi-mask,nmi-restore
     PASS: demo.asm -> demo.bin (26 bytes, R=128) -> demo.bas
 
 Inspect the emitted BASIC:
@@ -85,19 +88,28 @@ Assemble, lint, emit `SRC.data` and generate `SRC.bas`.
 
 | Option       | Description                                      |
 |--------------|--------------------------------------------------|
-| `--stage N`  | Development stage (1–6, default 6)               |
+| `--shape S`  | Rule shape: `bridge` (default), `handler`, `iret` |
+| `--stage N`  | Bridge development stage (0–6, default 6). Bridge-only. |
+| `--only ids` | Restrict to comma-separated rule ids / group names |
+| `--skip ids` | Remove comma-separated rule ids / group names |
 | `--result R` | Explicit result offset (default: 128 if ≤128 bytes, else 180) |
 | `--ceiling C`| Maximum allowed code length (default 180)        |
-| `--rules F`  | Override rules JSON file                         |
 | `--strict`   | Escalate warnings to errors                      |
 | `--uasm P`   | Path to UASM executable                          |
 | `--keep`     | Keep intermediate files on failure               |
 
 Exit codes: `0` success, `1` usage, `2` UASM failure, `4` lint failure, `5` loader/emission failure.
 
+`--rules` is retired. Passing `--rules FILE` errors with
+`use --shape handler|iret`.
+
 ### `jr lint FILE.bin [options]`
 
-Lint only. Same options as `build` (except `--uasm`). Requires `--result` if `selfloc` rule is active.
+Lint only. Same selection options as `build` (except `--uasm`). Requires
+`--result` if the `selfloc` rule is active. `--stage` is bridge-only;
+`handler`/`iret` shapes reject `--stage`.
+
+`--stage 0` is legal: compile-only, no rules run, status `pass`.
 
 Exit codes: `0` no errors (and no warnings under `--strict`), `4` otherwise.
 
@@ -129,21 +141,51 @@ Exit codes: `0` success, `7` parse error.
 
 ---
 
-## Rule Table
+## Shape Rule Table
 
-| ID           | Kind    | Stage | Severity | Checks |
-|--------------|---------|-------|----------|--------|
-| `entry`      | prefix  | 1     | error    | Must start with `push cs / pop ds / push bp` (`0E 1F 55`) |
-| `retf-count` | count   | 1     | error    | Exactly one `CB` far return |
-| `epilogue`   | suffix  | 1     | error    | Must end with `pop bp / retf` (`5D CB`) |
-| `no-int21h`  | absent  | 1     | error    | No `INT 21h` (`CD 21`) |
-| `no-iret`    | absent  | 1     | warn     | No `IRET` (`CF`) — may be false positive |
-| `no-speaker` | absent  | 1     | warn     | No `OUT 61h` (`E6 61`) |
-| `selfloc`    | selfloc | 2     | error    | `lea bp,[bp+disp]` displacement equals `R - entry` |
-| `budget`     | budget  | 3     | error    | Code size ≤ ceiling (default 180) |
-| `latch-read` | before  | 4     | warn     | Timer reads (40h/41h/42h) must be preceded by latch idiom (`B0 00 E6 43`) |
-| `nmi-mask`   | before  | 5     | warn     | `in al,62h` must be preceded by NMI mask (`B0 00 E6 A0`) |
-| `nmi-restore`| suffix  | 5     | warn     | If A0h/62h touched, must end with NMI restore + `pop bp / retf` |
+### bridge (stage 6 = full)
+
+| ID           | Kind            | Severity | Checks |
+|--------------|-----------------|----------|--------|
+| `entry`      | prefix `0E1F5506` | error  | `push cs / pop ds / push bp / push es` |
+| `retf-count` | opcode-count    | error  | Exactly one `retf` |
+| `epilogue`   | suffix `075DCB` | error  | `pop es / pop bp / retf` |
+| `no-int21h`  | opcode-absent   | error  | No `int` with operand `21` |
+| `no-iret`    | opcode-absent   | error  | No `iret` |
+| `no-speaker` | opcode-absent   | error  | No `out` with operand `61` |
+| `selfloc`    | selfloc         | error  | `lea bp,[bp+disp]` displacement equals `R - entry` |
+| `budget`     | budget          | error  | Code size ≤ ceiling (default 180) |
+| `latch-read` | before (byte)   | warn   | Timer reads (40/41/42) preceded by latch idiom |
+| `nmi-mask`   | before (byte)   | warn   | `in al,62h` preceded by NMI mask |
+| `nmi-restore`| suffix (byte)   | warn   | If A0h/62h touched, restore NMI before `pop es / pop bp / retf` |
+
+Stage presets: `0` none, `1` entry/retf-count/epilogue/no-int21h/no-iret/no-speaker, `2` + selfloc, `3` + budget, `4` + latch-read, `5` + nmi-mask/nmi-restore, `6` stage-5 list (strict not implied).
+
+### handler (3-byte entry, no ES)
+
+| ID           | Kind            | Severity |
+|--------------|-----------------|----------|
+| `handler-entry` | prefix `0E1F55` | error |
+| `retf-count`    | opcode-count `retf` == 1 | error |
+| `handler-epilogue` | suffix `5D5350CB` | error |
+| `no-int21h`  | opcode-absent | error |
+| `no-iret`    | opcode-absent `iret` | error |
+| `no-speaker` | opcode-absent | error |
+| `selfloc`    | selfloc | error |
+| `budget`     | budget | error |
+
+### iret (3-byte entry, no ES)
+
+| ID           | Kind            | Severity |
+|--------------|-----------------|----------|
+| `iret-entry` | prefix `0E1F55` | error |
+| `iret-retf-count` | opcode-count `retf` == 0 | error |
+| `iret-has-iret`   | opcode-count `iret` == 1 | error |
+| `iret-epilogue`   | suffix `5DCF` | error |
+| `no-int21h`  | opcode-absent | error |
+| `no-speaker` | opcode-absent | error |
+| `selfloc`    | selfloc | error |
+| `budget`     | budget | error |
 
 **Canonical idiom:** Use `mov al,imm` (not `xor al,al`, `sub al,al`, or `and al,0`). The linter flags non‑canonical zeroing.
 
@@ -171,14 +213,20 @@ Static checks only warn about named hazards. Algorithm and timing bugs are not d
 **Can I use `xor al,al` instead of `mov al,0`?**  
 No. The canonical idiom policy requires `mov al,imm` for uniformity and machine‑checkability.
 
-**What does `WARN: possible IRET (CF)` mean?**  
-The byte `CF` was found; it could be an `IRET` instruction or part of an immediate. Inspect with `jr dis`.
+**What does `opcode-absent iret` mean now that it's an error?**  
+An actual `iret` instruction was decoded. In bridge/handler shapes that is a hard failure; in the `iret` shape `iret == 1` is required and `retf == 0` is enforced instead.
 
 **How do I raise the budget ceiling?**  
 Use `--ceiling N` (default 180). But if code exceeds 180 bytes, reconsider algorithm or split routine.
 
 **What are stages?**  
-Development stages 1–6 gate rules by maturity. Higher stages enable stricter checks. Default is 6; use `--stage` to lower for incremental work.
+Bridge-only development stages gate rules by maturity. `stage=0` is compile-only; `stage=6` is the full set. `handler`/`iret` shapes do not take a stage.
+
+**How do I select a subset of rules?**  
+Use `--only ids` and `--skip ids` with comma-separated rule ids or group names (e.g. `--only nmi,entry`).
+
+**What happened to `--rules`?**  
+Retired. Use `--shape handler|iret` for the old alternate rulesets.
 
 **What happens if `jr build` fails?**  
 No new `.data` or `.bas` are written. Pre‑existing outputs are left untouched. Use `--keep` to retain intermediate files for debugging.
