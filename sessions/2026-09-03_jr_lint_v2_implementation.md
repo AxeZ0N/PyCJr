@@ -1,9 +1,15 @@
-# Handoff — jr lint v2: engine + config implemented, anchors found stale
+# Handoff — jr lint v2: engine + config implemented through Phase 3
 
 Date: 2026-09-03
-Scope: implement the jr lint v2 refactor through engine revamp,
-config consolidation, and regression. No hardware run. Phases 4-5
-deferred.
+Scope: implement the jr lint v2 refactor through Phase 3 (config
+consolidation, read-back). No hardware run.
+
+## Closure marker
+
+This session closed after Phase 3. Phases 4-5 of the spec remain
+open and are the next scope. Phase 6 regression was attempted and
+produced a measured conflict result (see below); it is not a lint-v2
+defect.
 
 ## Verified this session
 
@@ -21,13 +27,15 @@ deferred.
   CLI shape/only/skip surface, `--rules` retired.
 - Phase 3 landed and read-back verified: 17 rules, unique ids, all
   shape/preset/group references resolve, `version: 2`.
-- Regression run: IRPING2 bytes under v2 bridge stage 6 fails with
-  exactly two errors - entry `0E1F5506` vs found `0E1F55E8` and
-  epilogue `075DCB` vs found `A05DCB`. No other rule fired. This is
-  measured proof the opcode-aware checkers discriminate cleanly.
 
 ## Open questions
 
+- Phase 4 doc/skill/test updates not done: `docs/jr_tool_spec.md`
+  (§2/§4/§6/Stage Gate table), `refs/jr-tools/jr-manual.md`,
+  `refs/jr-tools/test_jr.py`, and the test-workflow skill Stage Gate
+  table (user-applied, per `skill_create_semantics`).
+- Phase 5 MCP schema not done: add `shape`/`only`/`skip`, retire
+  `rules`, restart server. User-applied.
 - Whether CH0CAL is stale in the same way as IRPING2. Strong
   suspicion by era; not measured this session.
 - Whether the `handler`/`iret` shapes have ever been exercised end
@@ -36,22 +44,19 @@ deferred.
 
 ## Loose ends
 
-- Phase 4 (docs/jr_tool_spec.md §2/§4/§6/Stage Gate table,
-  jr-manual.md, test_jr.py, test-workflow skill Stage Gate table)
-  not done.
-- Phase 5 (MCP schema shape/only/skip, retire rules, server
-  restart) not done; user-applied.
-- Two supersedes emitted this session (see facts.append.md).
 - IRPING2 and CH0CAL anchors need Contract-A regeneration with a
-  hardware run and a test_log entry - separate scope.
+  hardware run and a test_log entry. Deferred; not part of lint-v2
+  completion. Do not fold into the Phase 4-5 finish scope.
+- Two supersedes emitted this session (see facts.append.md).
 
 ## Suggested next scope
 
-Regenerate IRPING2 and CH0CAL anchors under Contract A (add
-`push es` after `push bp`, `pop es` before `pop bp`, plus the
-CH0CAL result-store reads), verify byte-match via `jr build` ->
-`jr dis` -> `jr lint`, then hardware-verify and record in
-`docs/test_log.md`. Do not fold into lint-v2 close.
+Finish the jr lint v2 spec: Phase 4 (docs/jr_tool_spec.md,
+jr-manual.md, test_jr.py, test-workflow skill Stage Gate table
+update - the skill update is user-applied), then Phase 5 (MCP schema
+shape/only/skip, retire rules, user restarts server). Do not start
+anchor regeneration in that session; keep it a separate follow-on
+scope after Phase 4-5 close.
 
 ## Ground truth
 
