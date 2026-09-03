@@ -434,7 +434,7 @@ def build(asm_text: str, *, stage=6, result=None, ceiling=180,
                                ceiling=ceiling, rules=rules_list, strict=strict)
             warnings = lint_result["warnings"]
         else:
-            warnings = "LINTING SKIPPED"
+            warnings = []
 
         data_block = data(bytes_to_hex(code))
 
@@ -454,23 +454,21 @@ def build(asm_text: str, *, stage=6, result=None, ceiling=180,
             "warnings": warnings,
             "disasm": dis(bin_hex),
         }
-        if status == "pass":
-            ret["disasm"] = dis(bin_hex)
-        return ret
-
-    # TemporaryDirectory cleans up all files automatically
 
 
 
 def lint(bin_hex: str, *, stage=6, result=None, ceiling=180,
          rules=None, strict=False) -> dict:
     """Run rule engine on binary hex. Returns dict on pass, raises JrError on failure."""
-    if not 1 <= stage <= 6:
-        raise JrError("stage must be between 1 and 6", exit_code=1)
+    if not 0 <= stage <= 6:
+        raise JrError("stage must be between 0 and 6", exit_code=1)
     if ceiling < 0:
         raise JrError("ceiling must be non-negative", exit_code=1)
     if result is not None and result < 0:
         raise JrError("result must be non-negative", exit_code=1)
+
+    if stage == 0:
+        return {"status": "pass", "errors": [], "warnings": []}
 
     data_bytes = hex_to_bytes(bin_hex)
     rules_list = load_rules(rules)

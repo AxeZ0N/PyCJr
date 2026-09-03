@@ -139,7 +139,7 @@ Exit codes: `0` success, `7` parse error.
 | `no-int21h`  | absent  | 1     | error    | No `INT 21h` (`CD 21`) |
 | `no-iret`    | absent  | 1     | warn     | No `IRET` (`CF`) — may be false positive |
 | `no-speaker` | absent  | 1     | warn     | No `OUT 61h` (`E6 61`) |
-| `selfloc`    | selfloc | 2     | error    | `lea bp,[bp+disp]` displacement equals `R - 6` |
+| `selfloc`    | selfloc | 2     | error    | `lea bp,[bp+disp]` displacement equals `R - entry` |
 | `budget`     | budget  | 3     | error    | Code size ≤ ceiling (default 180) |
 | `latch-read` | before  | 4     | warn     | Timer reads (40h/41h/42h) must be preceded by latch idiom (`B0 00 E6 43`) |
 | `nmi-mask`   | before  | 5     | warn     | `in al,62h` must be preceded by NMI mask (`B0 00 E6 A0`) |
