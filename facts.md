@@ -2000,3 +2000,64 @@ live in `docs/jr_lint_v2_refactor_spec.md`; that file is the source of
 truth for the implementing session. No code, no config, no file
 deletions, no fact supersedes were performed this session — all are
 deferred to the implementing session per that spec.
+## 2026-09-03 · jr_lint_v2_single_config · decision
+supersedes: jr_handler_ruleset_added
+supersedes: jr_iret_ruleset_added
+
+`refs/jr-tools/jr_rules.json` v2 replaces the three v1 rulesets.
+`jr_rules_handler.json` and `jr_rules_iret.json` are folded in and
+deleted. One config holds `rules` / `groups` / `shapes`; load-time
+validation rejects duplicate ids, unresolved references, and group
+names used as rule ids in shapes or stage presets.
+```
+
+```
+## 2026-09-03 · jr_lint_v2_shape_only_skip · decision
+
+`jr build` / `jr lint` gain `--shape bridge|handler|iret`,
+`--only`, `--skip`; `--rules` is retired and errors. `--stage` is
+bridge-only and errors with handler/iret. `only`/`skip` take
+comma-separated rule ids or group names. Active selection is always
+printed.
+```
+
+```
+## 2026-09-03 · jr_lint_v2_strict_decoupling · decision
+
+`strict` is optional and orthogonal; never implied by stage 6 or any
+shape. Stage-6 + `strict=False` reports warnings and passes exactly
+as before the refactor.
+```
+
+```
+## 2026-09-03 · jr_lint_v2_severity_escalation · decision
+
+Deliberate default-behavior change under approved A: `no-iret` and
+`no-speaker` move warn -> error in all shapes. Green code unaffected;
+red code now blocks.
+```
+
+```
+## 2026-09-03 · irping2_ch0cal_pre_contract_a · conflict
+
+IRPING2 anchor pair (`.ASM` and `.BAS`, byte-identical to each
+other) predates Contract A and omits ES preservation: entry bytes
+`0E 1F 55 E8`, epilogue `5D CB` with no `07`/`06`. Measured under
+v2 bridge stage 6 on 2026-09-03: entry and epilogue errors only.
+This is anchor staleness, not a lint-v2 defect; v1 Contract A rules
+would have failed the same bytes. CH0CAL not measured this session
+but is flagged stale by inspection of the same pre-Contract-A
+era.
+```
+
+```
+## 2026-09-03 · jr_lint_v2_engine_verified · empirical
+
+`jr build --stage=0` on a trivial stub returned `status=pass`,
+`warnings=[]`, no `"LINTING SKIPPED"` (the old stage-0 bug).
+`jr build stage=6 result=128` on IRPING2 bytes exercised config
+load, id validation, resolution, ndisasm decode, and all seven
+checker kinds; only the two expected Contract-A entry/epilogue
+errors fired, proving the opcode-aware checkers (`int 0x21`,
+`iret`, `out 0x61,al`) produced no false positives on a red
+routine.
