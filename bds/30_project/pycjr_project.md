@@ -6,8 +6,8 @@ the Cartridge BASIC bridge.
 
 ## Always-on
 
-- Skills are authoritative: `pcjr_cartridge_basic_asm` (v6),
-  `pcjr_test_workflow` (v7), `pcjr_payload_generation`. If absent from
+- Skills are authoritative: `pcjr_cartridge_basic_asm` (v8),
+  `pcjr_test_workflow` (v10), `pcjr_payload_generation`. If absent from
   context, re-request them. Rules live in skills, never restated here.
 - Repo = source of truth; BDS library = runtime cache. Git wins on
   drift. Read path: `grep_repo` MCP or user-pasted `git grep`.
