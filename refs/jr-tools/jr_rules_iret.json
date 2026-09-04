@@ -63,7 +63,7 @@
       "min_stage": 2,
       "severity": "error",
       "config": {"encodings": ["disp8", "disp16"]},
-      "message": "selfloc: lea bp,[bp+{found_disp}] yields result offset {found_r}; expected displacement {expected_disp} (R - 6 = {expected_disp})",
+      "message": "selfloc: lea bp,[bp+{found_disp}] yields result offset {found_r}; expected displacement {expected_disp} (R - entry = {expected_disp})",
       "rationale": "facts selfloc_pop_offset_semantics; +128 trap (2026-08-25)"
     },
     {

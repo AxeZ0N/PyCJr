@@ -1,4 +1,4 @@
-# PCjr Design / Test Workflow (v9)
+# PCjr Design / Test Workflow (v10)
 
 ## Activation
 
@@ -175,12 +175,17 @@ error (blocks build); `!` = warn (blocks only under `strict=true`).
 
 | Stage | New risk | Lint rules active | Hardware pass condition |
 |---|---|---|---|
-| 1 Bridge stub | PUSH CS / POP DS / PUSH BP / RETF | entry, retf-count, epilogue, no-int21h, no-iret!, no-speaker! | Returns RETURNED OK |
-| 2 Self-location | call get_ip / pop bp / lea | + selfloc | Writes known byte at O+R |
-| 3 Result stores | Explicit O+128/130/132 | + budget (ceiling 180) | BASIC reads expected values |
-| 4 IN from target port | Port access | + latch-read! | Status changes as documented |
-| 5 Polling loop | 62h reads, NMI mask/restore | + nmi-mask!, nmi-restore! | Edges observed on stimulus |
-| 6 Full capture | Complete routine | + strict=true | All contract fields match |
+| 0 | None (compile-only) | (none) | N/A |
+| 1 | Bridge stub | entry, retf-count, epilogue, no-int21h, no-iret, no-speaker | Returns RETURNED OK |
+| 2 | Self-location | + selfloc | Writes known byte at O+R |
+| 3 | Result stores | + budget (ceiling 180) | BASIC reads expected values |
+| 4 | IN from target port | + latch-read | Status changes as documented |
+| 5 | Polling loop | + nmi-mask, nmi-restore | Edges observed on stimulus |
+| 6 | Full capture | stage-5 list (strict not implied) | All contract fields match |
+
+Note: `strict` is orthogonal and never implied — not by stage 6, not by
+any shape. Stage-6 + `strict=False` reports warnings and passes exactly
+as before.
 
 If a stage fails, the defect is in the bytes added in that stage. Fix
 only that stage, then re-run.

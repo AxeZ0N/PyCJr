@@ -1811,3 +1811,311 @@ bisect inside the wrapper.
 - docs/anchors/IRPING2.BAS / IRPING2.ASM — transport regression
 - docs/anchors/CH0CAL.ASM / CH0CAL.bas — functional primary regression
 - No new anchors this session.
+## 2026-08-31 · es_clobber_bridge_contract · empirical
+
+ES must be preserved across the Cartridge BASIC machine-code bridge.
+Controlled A/B, this session:
+
+- DI-based NMIPEEK without an ES save corrupted BASIC on every run —
+  `bytes` corruption signature, keyboard alive but frozen on string
+  operations (Enter/parse).
+- The same routine with `PUSH ES` after self-location and `POP ES`
+  before `RETF` passed cleanly on repeated runs: `returned ok`,
+  `m1=42`, `saved=3960:61440` (stock KBDNMI `0F78:F000`), keyboard
+  alive and echoed.
+
+ES clobber explains the original N1-A crash signature and the
+nondeterminism (byte-identical rebuild passed once, then corrupted —
+timing, not bytes). This fact extends `basic_bp_preserve_contract` to
+BP + ES; Rule 1 of the platform skill must be revised accordingly.
+
+supersedes: basic_bp_preserve_contract
+
+## 2026-08-31 · nmipeek_anchor_pass · empirical
+
+NMIPEEK passed hardware: masked read of the INT 02h vector with ES
+preserved and a DI-based result base. Observed `returned ok`,
+`m1=42`, `saved=3960:61440` (`0F78:F000`), keyboard alive and echoed.
+Ground truth: `docs/anchors/NMIPEEK.BAS` / `docs/anchors/NMIPEEK.ASM`.
+
+## 2026-08-31 · bp_clobber_theory_falsified · empirical
+
+Hypothesis "the N1-B/N1-A crash signature is caused by KBDNMI
+clobbering BP while BP holds the result base" is disproved. A DI-based
+variant (NMIPEEK, BP restored immediately after self-location, all
+stores through DI) still produced the same bytes-corruption signature.
+BP was not the killer; ES clobber is. See `es_clobber_bridge_contract`.
+
+## 2026-08-31 · n1a_onepass_anomaly · open item
+
+The original N1-A (112 bytes, no ES save) passed exactly once on
+hardware, then corrupted on a byte-identical rebuild. Under the
+ES-clobber contract it is expected to corrupt reliably; the single
+clean pass is unexplained. Do not cite N1-A as ground truth until the
+anomaly is resolved.
+## 2026-08-31 · contract_a_bridge_frozen · decision
+
+Bridge entry contract frozen as Contract A, implementing the Rule 1
+revision instructed by `es_clobber_bridge_contract`:
+
+- Entry: `PUSH CS` / `POP DS` / `PUSH BP` / `PUSH ES` — bytes `0E 1F 55 06`
+- Epilogue: `POP ES` / `POP BP` / `RETF` — bytes `07 5D CB`
+- `PUSH ES` lands immediately after `PUSH BP`; `POP ES` immediately before `POP BP`.
+- Selected over Contract B (push-ES-at-first-use, as in NMIPEEK v1) for
+  uniform, unconditional, trivially-lintable semantics.
+- Consequence: `get_ip` moves from offset 6 to offset 7; selfloc
+  displacement becomes `R - 7`, not `R - 6`.
+
+## 2026-08-31 · jr_rules_json_truncation · analysis
+
+`refs/jr-tools/jr_rules.json` was truncated on disk: the `nmi-restore`
+rule lost its `config`, `message`, and `rationale`, and the file ended
+mid-structure at line 107 (tab-indented `}` at 106, bare `}` at 107).
+The MCP server rejected every build at char 3725 before UASM ran —
+identical error across three distinct `asm_text` payloads, localizing
+the defect to the ruleset, not the assembly. Cause: paste lost the
+tail. Fix: re-emitted the file wholesale. Lesson: read back and verify
+long JSON after any paste.
+
+## 2026-08-31 · jr_selfloc_hardcoded_offset · analysis
+
+`jr.py` selfloc computed `expected_disp = R - 6` with a hardcoded 6,
+assuming the old 3-byte bridge entry. Contract A's 4-byte entry shifts
+`get_ip` to offset 7, so the correct displacement is `R - 7`. The
+checker rejected correct Contract A code (`lea bp,[bp+121]` — found_r
+127 vs expected 122). Fix: derive the entry offset from the located
+marker — `entry = idx + 3`, `expected_disp = R - entry`,
+`found_r = entry + disp`. Contract-proof: passes under both 3-byte and
+4-byte entries. Requires MCP restart (module import).
+
+## 2026-08-31 · nmipeek2_built_unverified · open item
+
+NMIPEEK2 (masked INT 02h vector read under Contract A) built and
+lint-passed at stage 6: 46 bytes, 0 errors, 0 warnings. Entry
+`0E 1F 55 06`, selfloc `lea bp,[bp+0x79]` (disp 121) giving result base
+entry+128, epilogue `07 5D CB`. NOT hardware-passed; not ground truth;
+no anchor files until it passes. Expected on a clean hardware run:
+status=42 (marker), rising=3960 (KBDNMI offset), falling=61440 (KBDNMI
+segment), keyboard alive; regression IRPING2.
+## 2026-08-31 · nmidisp_dispatch_observed · empirical
+
+NMIDISP Probe A: a custom INT 02h vector installed from the BASIC
+bridge dispatched on a single real IR keystroke and returned clean.
+Flag went 0 -> 1; BASIC printed the result line after the handler
+(interpreter intact past the IRET); keyboard dead by design (stock
+KBDNMI replaced, scancodes discarded); cursor still blinking (IF
+restored, INT 08h timer IRQ alive). Control run with no keystroke
+printed flag=0. IRPING2 status=3 passed before each run. First clean
+custom INT 02h dispatch in project history; the three prior no_result
+crashes (2026-08-30) were pre-Contract A and pre-jr-tooling-repair
+artifacts, not evidence the path is unusable.
+
+## 2026-08-31 · nmidisp_basic_coexistence · analysis
+
+A minimal NMI handler — push ds/ax/bp, set one flag byte at the result
+region, pop bp/ax/ds, iret — survived one disproof attempt: BASIC
+executed PEEK/PRINT after the handler returned and the cursor kept
+blinking, consistent with restored IF and intact interpreter state.
+NOT empirical, NOT manual-verified, NOT proven. Repeats plus the
+KBDNMI chain (Probe B) are required before any coexistence claim is
+promoted. The clean control run (flag=0, no spurious NMI in the window)
+weakens but does not eliminate the spurious-source concern.
+
+## 2026-08-31 · rule9_nmidisp_carveout · decision
+
+Rule 9 prohibition on custom INT 02h handler dispatch was lifted for
+the NMIDISP (Probe A) scope only, by user decision 2026-08-31. The
+prohibition remains on the books for all other scopes and for Probe B
+(no-op redirect -> JMP FAR F000:0F78) until separately authorized.
+## 2026-08-31 · int48_runtime_vector · manual-verified
+
+The runtime INT 48h (hex) vector is KEY62_INT at F000:10C6, not
+KEY_SCAN_SAVE at F000:F068. Exactly two writes to KEY62_PTR (IVT offset
+0120h) exist in the BIOS listing:
+
+- 04D9: MOV KEY62_PTR, OFFSET KEY_SCAN_SAVE — "POD INT HANDLER"; POST
+  diagnostic only.
+- 07C9: MOV KEY62_PTR, OFFSET KEY62_INT — "62 KEY CONVERSION"; installed
+  in the "SET UP OTHER INTERRUPTS AS NECESSARY" block after the vector
+  table copy loop (F7A).
+
+The 07C9 write supersedes the F068 stub before the runtime keyboard path
+is live. KBDNMI's success path (INT 48h at 0FF7) therefore reaches
+KEY62_INT at runtime, not the POST stub.
+
+## 2026-08-31 · kbdnmi_entry_contract · manual-verified
+
+KBDNMI (F000:0F78) entry contract, from a full routine read (0F78–1003):
+
+- Pushes SI, DI, AX, BX, CX, DX, DS, ES in that order and pops in reverse.
+  Save/restore is transparent: whatever register value is present on entry
+  is faithfully restored on IRET. A clobbered GPR therefore passes straight
+  back to the interrupted program.
+- Does NOT read ES in its body. The push at 0F80 and pop at 0FF9 bracket
+  no ES dereference.
+- Does NOT set DS on the success path. Only the error path (I9 at 1004)
+  calls DDS to set DS=0040h.
+- Success path (0FF7 INT 48h) relies on the INT 48h target to establish
+  its own DS.
+
+supersedes: handoff assumption that KBDNMI requires ES=DATA on entry.
+
+## 2026-08-31 · key62_int_ds_self · manual-verified
+
+KEY62_INT (F000:10C6) calls DDS (138B) at 10C8, establishing DS=0040h
+itself before any buffer write. Its header comment states the register
+contract explicitly: "IT IS ASSUMED THAT THIS ROUTINE IS CALLED FROM THE
+NMI DESERIALIZATION ROUTINE AND THAT ALL REGISTERS WERE SAVED IN THE
+CALLING ROUTINE. AS A CONSEQUENCE ALL REGISTERS ARE DESTROYED." KBDNMI is
+the saving caller. KEY62_INT contains no halt path (no OUT 0A0h,0 / no
+CALL E_MSG) in its first ~40 bytes.
+
+## 2026-08-31 · probe_b_noop_chain_pass · empirical
+
+The 57-byte zero-work redirect (installer + one far-indirect jmp handler)
+passes hardware: keyboard alive, keystroke echoed via INPUT after a single
+IR key. The handler touches no register, stores no flag, and at KBDNMI
+start SP is byte-identical to a stock NMI entry. See test_log
+probe_b_noop_bisect.
+
+## 2026-08-31 · probe_b_nonzero_work_defect · analysis
+
+Hypothesis: the Probe B defect lives in the handler's non-zero work (flag
+store, register saves, added cycles perturbing KBDNMI phase or stack),
+not in the stock chain. The no-op pass means this hypothesis SURVIVED one
+disproof attempt — it is not proven, not verified, not empirical.
+
+Supporting observations, in run order:
+- 74-byte AX-clobber variant → "Syntax error in 160" (AX corruption passed
+  through KBDNMI's transparent save/restore into BASIC).
+- 86-byte all-registers variant → hard freeze, no cursor (18-byte save
+  frame perturbed stack depth at KBDNMI entry).
+
+Both signatures vanish when the handler does zero work.
+## 2026-09-03 · jr_lint_v2_refactor_spec · decision
+
+The `jr` lint v2 refactor spec plus implementation plan is authored and
+locked. Full normative content and explicit next-session instructions
+live in `docs/jr_lint_v2_refactor_spec.md`; that file is the source of
+truth for the implementing session. No code, no config, no file
+deletions, no fact supersedes were performed this session — all are
+deferred to the implementing session per that spec.
+## 2026-09-03 · jr_lint_v2_single_config · decision
+supersedes: jr_handler_ruleset_added
+supersedes: jr_iret_ruleset_added
+
+`refs/jr-tools/jr_rules.json` v2 replaces the three v1 rulesets.
+`jr_rules_handler.json` and `jr_rules_iret.json` are folded in and
+deleted. One config holds `rules` / `groups` / `shapes`; load-time
+validation rejects duplicate ids, unresolved references, and group
+names used as rule ids in shapes or stage presets.
+```
+
+```
+## 2026-09-03 · jr_lint_v2_shape_only_skip · decision
+
+`jr build` / `jr lint` gain `--shape bridge|handler|iret`,
+`--only`, `--skip`; `--rules` is retired and errors. `--stage` is
+bridge-only and errors with handler/iret. `only`/`skip` take
+comma-separated rule ids or group names. Active selection is always
+printed.
+```
+
+```
+## 2026-09-03 · jr_lint_v2_strict_decoupling · decision
+
+`strict` is optional and orthogonal; never implied by stage 6 or any
+shape. Stage-6 + `strict=False` reports warnings and passes exactly
+as before the refactor.
+```
+
+```
+## 2026-09-03 · jr_lint_v2_severity_escalation · decision
+
+Deliberate default-behavior change under approved A: `no-iret` and
+`no-speaker` move warn -> error in all shapes. Green code unaffected;
+red code now blocks.
+```
+
+```
+## 2026-09-03 · irping2_ch0cal_pre_contract_a · conflict
+
+IRPING2 anchor pair (`.ASM` and `.BAS`, byte-identical to each
+other) predates Contract A and omits ES preservation: entry bytes
+`0E 1F 55 E8`, epilogue `5D CB` with no `07`/`06`. Measured under
+v2 bridge stage 6 on 2026-09-03: entry and epilogue errors only.
+This is anchor staleness, not a lint-v2 defect; v1 Contract A rules
+would have failed the same bytes. CH0CAL not measured this session
+but is flagged stale by inspection of the same pre-Contract-A
+era.
+```
+
+```
+## 2026-09-03 · jr_lint_v2_engine_verified · empirical
+
+`jr build --stage=0` on a trivial stub returned `status=pass`,
+`warnings=[]`, no `"LINTING SKIPPED"` (the old stage-0 bug).
+`jr build stage=6 result=128` on IRPING2 bytes exercised config
+load, id validation, resolution, ndisasm decode, and all seven
+checker kinds; only the two expected Contract-A entry/epilogue
+errors fired, proving the opcode-aware checkers (`int 0x21`,
+`iret`, `out 0x61,al`) produced no false positives on a red
+routine.
+## 2026-09-04 · jr_single_config_consolidation · decision
+
+supersedes: jr_handler_ruleset_added
+supersedes: jr_iret_ruleset_added
+
+The three ruleset files (`jr_rules.json`, `jr_rules_handler.json`,
+`jr_rules_iret.json`) are replaced by one v2 config: `version: 2`, with
+`rules` / `groups` / `shapes`. Stage gating is data (`stage_presets`),
+not per-rule `min_stage`. The two handler/iret files are deleted.
+
+## 2026-09-04 · jr_shape_only_skip_surface · decision
+
+CLI and MCP expose `--shape` (`bridge` default, `handler`, `iret`),
+`--only`, and `--skip`; `--rules` is retired. MCP schema: `shape`
+(string), `only` / `skip` (string arrays). FastMCP derives the schema
+from type annotations, so no separate JSON schema edit is needed.
+
+## 2026-09-04 · jr_strict_decoupled · policy
+
+`strict` is optional, orthogonal, and never implied — not by stage 6,
+not by any shape. Stage-6 + `strict=False` reports warnings and passes
+exactly as before.
+
+## 2026-09-04 · jr_severity_escalation_no_iret_no_speaker · decision
+
+`no-iret` and `no-speaker` move warn → error in all shapes. Correct
+code is unaffected; red code now fails. This is the approved
+A-driven default change.
+
+## 2026-09-04 · contract_a_selfloc_entry_offset · empirical
+
+Contract-A bridge entry is 7 bytes before `get_ip`:
+`push cs` (0E), `pop ds` (1F), `push bp` (55), `push es` (06),
+`call get_ip` (E8 00 00). After `pop bp`, BP = O + 7. The selfloc
+displacement must be `R − 7`. For R = 128, disp = 121 (`79 00`).
+The pre-Contract-A `R − 6` arithmetic is wrong.
+
+## 2026-09-04 · jr_mcp_shape_none_boundary_fix · empirical
+
+The MCP pass-through passed `shape=None` explicitly, defeating
+`jr.py`'s signature default `shape="bridge"`. The engine guard then
+raised `--stage is valid only for shape=bridge` for the None-shape
+case with defaulted stage=6. Fixed at the boundary:
+`shape=shape or "bridge"` at both build and lint call sites. Verified
+pass on a bare lint call after the fix.
+
+## 2026-09-04 · jr_rules_retirement_drift · empirical
+
+Spec §7 says `--rules` errors with `use --shape handler|iret`.
+Measured behavior differs by surface:
+
+- CLI: argparse rejects `--rules` with rc=2
+  (`unrecognized arguments`); the engine-level friendly message is
+  unreachable on the CLI path.
+- MCP: FastMCP silently drops the unknown `rules` key and proceeds as
+  a default bridge lint; it does not reject the call.
+
+Neither surface errors with the spec's wording.

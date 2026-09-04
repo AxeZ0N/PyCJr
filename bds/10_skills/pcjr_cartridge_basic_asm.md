@@ -1,4 +1,4 @@
-# IBM PCjr Cartridge BASIC & 8088 Assembly — Canonical Verified Skill (v7)
+# IBM PCjr Cartridge BASIC & 8088 Assembly — Canonical Verified Skill (v8)
 
 ## Activation
 
@@ -72,13 +72,19 @@ CALL O           ' far call
 
 The called machine routine MUST:
 
-- start with `PUSH CS` / `POP DS`
+- start with `PUSH CS` / `POP DS` / `PUSH BP` / `PUSH ES`
+(bytes `0E 1F 55 06`)
 - preserve BP: `PUSH BP` at entry (after `POP DS`), `POP BP`
 immediately before `RETF`. Clobbering BP corrupts the Cartridge
 BASIC interpreter frame and yields `Division by zero in (blank)`
 with a dead keyboard — unrecoverable, cold power-cycle only.
 (empirical, 2026-08-25, S1 v1)
-- end with far `RETF` (opcode `0CBh`)
+- preserve ES: `PUSH ES` at entry (immediately after `PUSH BP`),
+`POP ES` immediately before `POP BP`. Clobbering ES corrupts BASIC
+on return — bytes-corruption signature, keyboard alive but frozen
+on string operations. (empirical, 2026-08-31,
+es_clobber_bridge_contract)
+- end with far `RETF` (opcode `0CBh`); epilogue bytes `07 5D CB`
 
 Never emit `CALL ABSOLUTE` (evaluates to 0 in Cartridge BASIC, calls
 offset 0 — hangs). Never emit `USR0` (black-screens).

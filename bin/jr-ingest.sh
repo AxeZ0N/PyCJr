@@ -1,18 +1,28 @@
 #!/usr/bin/env bash
 # jr-ingest.sh — apply an assistant-emitted payload zip to the PyCJr
-# living repo. Append + commit in one user-run step.
+# living repo. Append journals, replace allowlisted context files, and
+# commit in one user-run step.
 #
 # Payload convention (zip contents):
 #   COMMIT.txt                   one-line commit message (required)
 #   facts.append.md              new fact headings; appended, deduped by heading
 #   sessions/<file>.md           session narrative; appended, or created if new
 #   docs/test_log.append.md      new run entries; appended
+#   bds/00_system_prompt.md      full-file replacement (allowlisted)
+#   bds/10_skills/*.md           full-file replacement (allowlisted)
+#   bds/20_persona/*.md          full-file replacement (allowlisted)
+#   bds/30_project/*.md          full-file replacement (allowlisted)
+#   docs/anchors/<PROG>.{BAS,ASM,bin,data}  full-file replacement (allowlisted)
 #
 # Guarantees:
-#   - Only paths in the allowlist are applied.
-#   - No existing file is overwritten. facts/test_log append; session
-#     files append-or-create.
+#   - No file outside the replacement allowlist is overwritten.
+#   - facts/test_log append; session files append-or-create; context
+#     files and anchors replace.
+#   - Any zip member not matching a known class is a hard error, and
+#     nothing is written to the repo on that error.
 #   - facts headings already present in facts.md are skipped with a warning.
+#
+# Not ingestible: bin/ (scripts must be replaced manually).
 #
 # Usage:
 #   jr-ingest.sh <payload.zip>
@@ -59,6 +69,23 @@ reject_path() {
   esac
 }
 
+member_kind() {
+  # prints one of: commit facts testlog session replace unknown
+  case "$1" in
+    COMMIT.txt)               echo commit ;;
+    facts.append.md)          echo facts ;;
+    docs/test_log.append.md)  echo testlog ;;
+    sessions/*.md)            echo session ;;
+    bds/00_system_prompt.md)  echo replace ;;
+    bds/10_skills/*.md)       echo replace ;;
+    bds/20_persona/*.md)      echo replace ;;
+    bds/30_project/*.md)      echo replace ;;
+    docs/anchors/*.BAS|docs/anchors/*.ASM|docs/anchors/*.bin|docs/anchors/*.data)
+                              echo replace ;;
+    *)                        echo unknown ;;
+  esac
+}
+
 append_repo_file() {
   local rel="$1" target="$2"
   reject_path "$rel"
@@ -68,6 +95,17 @@ append_repo_file() {
   fi
   echo "APPEND ${target}"
 }
+
+# --- validation pass (before any write) ----------------------------------
+while IFS= read -r -d '' f; do
+  rel="${f#"$WORK"/}"
+  reject_path "$rel"
+  kind="$(member_kind "$rel")"
+  if [ "$kind" = "unknown" ]; then
+    echo "ERROR: unknown payload member: $rel" >&2
+    exit 1
+  fi
+done < <(find "$WORK" -type f -print0)
 
 # --- facts ---------------------------------------------------------------
 if [ -f "$WORK/facts.append.md" ]; then
@@ -131,6 +169,18 @@ for rel in "$WORK"/sessions/*.md; do
   fi
   echo "APPEND ${f}"
 done
+
+# --- full-file replacement (allowlisted) ---------------------------------
+while IFS= read -r -d '' f; do
+  rel="${f#"$WORK"/}"
+  [ "$(member_kind "$rel")" = "replace" ] || continue
+  if [ "$DRY" -eq 0 ]; then
+    mkdir -p "$(dirname "$REPO_ROOT/$rel")"
+    cp "$f" "$REPO_ROOT/$rel"
+    APPLIED_FILES+=("$rel")
+  fi
+  echo "REPLACE ${rel}"
+done < <(find "$WORK" -type f -print0)
 
 # --- commit --------------------------------------------------------------
 if [ "$DRY" -eq 1 ]; then

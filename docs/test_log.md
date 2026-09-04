@@ -608,3 +608,94 @@ Not anchored.## 2026-08-30 · IRPING2_MIN · result
 </BDS:LONG_WORK>
 
 Payload emitted: `COMMIT.txt`, `facts.append.md`, `sessions/2026-08-31_nmi_dispatch_ladder.md`, `docs/test_log.append.md`. No anchors — no probe earned a hardware pass this session. No memory batch proposed; say the word if you want one.
+## 2026-08-31 · NMIPEEK ES A/B · result
+
+{
+"id":"nmipeek_es_ab",
+"source":"NMIPEEK.BAS",
+"hypothesis":"H — the bytes-corruption crash is caused by ES clobber across the bridge",
+"falsifier":"F — ES-preserved NMIPEEK still corrupts (same signature with PUSH/POP ES in place)",
+"clean_run":"S — returned ok, m1=42, saved=3960:61440, keyboard alive and echoes",
+"observed": {
+  "no_es_save": "bytes corruption, keyboard alive but frozen on string ops (every run)",
+  "es_preserved": "returned ok, m1=42, saved=3960:61440, keyboard alive (every run)"
+},
+"verdict":"failed_to_disprove"
+}
+
+## 2026-08-31 · NMIPEEK shift/overflow corrections · result
+
+{
+"id":"nmipeek_harness_fixes",
+"source":"NMIPEEK.BAS",
+"note":"First ES-preserved build had PUSH ES before self-location, shifting pop di from offset 6 to 7 and skewing all stores (saved read 0x7800:0x000F). Corrected to PUSH ES after self-location. Harness sg promoted to sg! because stock segment F000=61440 overflows DEFINT.",
+"recovery":"cold_power_cycle"
+}
+# NMIDISP Probe A — 2026-08-31
+
+## Contract
+
+{
+  "id": "nmidisp_a",
+  "source": "NMIDISP.BAS",
+  "expected": { "installer_return": "RETURNED OK", "dispatch_flag": 1 },
+  "regression": "IRPING2",
+  "recovery": "cold_power_cycle"
+}
+
+## Result
+
+{
+  "id": "nmidisp_a",
+  "loaded": 72,
+  "installer_return": "RETURNED OK",
+  "observed": "status=1 rising=0 falling=0 (status field = dispatch flag)",
+  "dispatch_flag": 1,
+  "keyboard": "dead (expected: KBDNMI replaced, scancodes discarded)",
+  "cursor": "blinking (IF restored, INT 08h alive)",
+  "regression": "IRPING2 status=3 (pass)",
+  "verdict": "clean run — dispatch observed; coexistence survived one disproof attempt"
+}
+
+## Control
+
+{
+  "id": "nmidisp_a_control",
+  "stimulus": "none",
+  "loaded": 72,
+  "dispatch_flag": 0,
+  "regression": "IRPING2 status=3 (pass)",
+  "verdict": "clean — no spurious NMI in the window"
+}
+## 2026-08-31 · probe_b_axclobber_74
+
+{
+  "id": "probe_b_axclobber_74",
+  "hypothesis": "H — chain via mov ax,imm / push ax / retf coexists",
+  "falsifier": "F — BASIC corrupt or keyboard dead after chain",
+  "clean_run": "S — loaded 74; RETURNED OK",
+  "observed": "loaded 74, RETURNED OK, Syntax error in 160 on first key, KB dead, cursor flashing",
+  "verdict": "no_result — flag never printed, IRPING2 unconfirmed; defect: AX clobbered by chain setup, transparent KBDNMI restore passed it to BASIC"
+}
+
+## 2026-08-31 · probe_b_allregs_86
+
+{
+  "id": "probe_b_allregs_86",
+  "hypothesis": "H — all-registers-saved handler chains with SP preserved",
+  "falsifier": "F — hard freeze or lost keystroke",
+  "clean_run": "S — loaded 86; RETURNED OK",
+  "observed": "loaded 86, RETURNED OK, hard freeze on first key, no cursor",
+  "verdict": "no_result — 18-byte save frame perturbed stack depth/phase at KBDNMI entry"
+}
+
+## 2026-08-31 · probe_b_noop_bisect
+
+{
+  "id": "probe_b_noop_bisect",
+  "hypothesis": "H — defect lives in handler non-zero work; a pure chain coexists",
+  "falsifier": "F — zero-work redirect still hard-freezes or fails to echo",
+  "clean_run": "S — loaded 57; RETURNED OK; INPUT prompt displayed",
+  "observed": "passed: keyboard alive, keystroke echoed via INPUT",
+  "verdict": "failed_to_disprove — F not observed; H survives one disproof attempt. IRPING2 status unconfirmed in report."
+}
