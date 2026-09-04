@@ -45,7 +45,7 @@ Create a bridge source `demo.asm` using the canonical skeleton:
         call get_ip
     get_ip:
         pop  bp
-        lea  bp, [bp + 128 - 6]      ; result offset R = 128
+        lea  bp, [bp + 128 - 7]      ; result offset R = 128, entry = 7
         ; ... routine body ...
         in   al, 0A0h              ; clear keyboard latch
         mov  al, 80h
@@ -64,7 +64,7 @@ Build it:
 Output:
 
     shape=bridge stage=6 rules=entry,retf-count,epilogue,no-int21h,no-iret,no-speaker,selfloc,budget,latch-read,nmi-mask,nmi-restore
-    PASS: demo.asm -> demo.bin (30 bytes, R=128) -> demo.bas
+    PASS: demo.asm -> demo.bin (21 bytes, R=128) -> demo.bas
 
 Inspect the emitted BASIC:
 
@@ -76,7 +76,7 @@ Verify a typed listing against the binary:
 
 Output:
 
-    verify: demo.bas matches demo.bin (30 bytes)
+    verify: demo.bas matches demo.bin (21 bytes)
 
 ---
 
@@ -100,8 +100,8 @@ Assemble, lint, emit `SRC.data` and generate `SRC.bas`.
 
 Exit codes: `0` success, `1` usage, `2` UASM failure, `4` lint failure, `5` loader/emission failure.
 
-`--rules` is retired. Passing `--rules FILE` errors with
-`use --shape handler|iret`.
+`--rules` is retired. The CLI argparse rejects `--rules` with rc=2 before
+the engine's friendly `use --shape handler|iret` message can fire.
 
 ### `jr lint FILE.bin [options]`
 
@@ -153,7 +153,7 @@ Exit codes: `0` success, `7` parse error.
 | `no-int21h`  | opcode-absent   | error  | No `int` with operand `21` |
 | `no-iret`    | opcode-absent   | error  | No `iret` |
 | `no-speaker` | opcode-absent   | error  | No `out` with operand `61` |
-| `selfloc`    | selfloc         | error  | `lea bp,[bp+disp]` displacement equals `R - entry` |
+| `selfloc`    | selfloc         | error  | `lea bp,[bp+disp]` displacement equals `R - 7` |
 | `budget`     | budget          | error  | Code size ≤ ceiling (default 180) |
 | `latch-read` | before (byte)   | warn   | Timer reads (40/41/42) preceded by latch idiom |
 | `nmi-mask`   | before (byte)   | warn   | `in al,62h` preceded by NMI mask |
@@ -197,7 +197,7 @@ Stage presets: `0` none, `1` entry/retf-count/epilogue/no-int21h/no-iret/no-spea
 |------|---------|
 | 0    | Success |
 | 1    | Usage error |
-| 2    | UASM assemble failure |
+| 2    | UASM assemble failure, or argparse rejection of unknown args |
 | 4    | Lint failure (error rule or `--strict` warning) |
 | 5    | Build emission/loader failure (`R < code_len`, file I/O) |
 | 6    | Verify/golden byte mismatch |
@@ -216,6 +216,9 @@ No. The canonical idiom policy requires `mov al,imm` for uniformity and machine�
 **What does `opcode-absent iret` mean now that it's an error?**  
 An actual `iret` instruction was decoded. In bridge/handler shapes that is a hard failure; in the `iret` shape `iret == 1` is required and `retf == 0` is enforced instead.
 
+**What is the correct selfloc displacement?**  
+For a Contract-A bridge, `R - 7`. The `get_ip` label is at offset 7, not 6. `lea bp,[bp+121]` targets `R=128`.
+
 **How do I raise the budget ceiling?**  
 Use `--ceiling N` (default 180). But if code exceeds 180 bytes, reconsider algorithm or split routine.
 
@@ -226,7 +229,7 @@ Bridge-only development stages gate rules by maturity. `stage=0` is compile-only
 Use `--only ids` and `--skip ids` with comma-separated rule ids or group names (e.g. `--only nmi,entry`).
 
 **What happened to `--rules`?**  
-Retired. Use `--shape handler|iret` for the old alternate rulesets.
+Retired. The CLI argparse rejects it (rc=2). The engine-level retirement message is MCP-only.
 
 **What happens if `jr build` fails?**  
 No new `.data` or `.bas` are written. Pre‑existing outputs are left untouched. Use `--keep` to retain intermediate files for debugging.

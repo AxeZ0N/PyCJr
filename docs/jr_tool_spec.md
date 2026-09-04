@@ -55,9 +55,9 @@ Four failures define the rule set:
 1. **S1 v2 (2026-08-25).** A routine passed the old emission gate and
    rebooted the PCjr into BIOS on the first NMI. Static checks do not
    prove hardware safety; they only warn about named hazards.
-2. **The +128 trap (2026-08-25).** `lea bp,[bp+128]` instead of `+122`
-   shifts every result store six bytes high. The selfloc displacement is
-   arithmetic nobody should do by hand.
+2. **The +128 trap (2026-08-25).** `lea bp,[bp+128]` instead of `+121`
+   shifts every result store seven bytes high. The selfloc displacement
+   is arithmetic nobody should do by hand.
 3. **CH0CAL `38 D8` gap (2026-08-25).** A `cmp ax,bx` emitted ungated
    because the old decoder didn't cover it. An opcode whitelist is a
    proxy for hazards not yet named.
@@ -188,7 +188,7 @@ start:
     call get_ip
 get_ip:
     pop  bp
-    lea  bp, [bp + N - 6]      ; N = result offset R (N-6 is the disp)
+    lea  bp, [bp + N - 7]      ; N = result offset R (N-7 is the disp)
     ; ... routine body ...
     in   al, 0A0h              ; clear keyboard latch
     mov  al, 80h
@@ -203,6 +203,12 @@ end start
 
 `org 0` pins offset 0 to the first byte. The output `.bin` must have no
 header and no padding.
+
+Contract-A entry arithmetic: the `get_ip` label lands at offset 7
+(`push cs` / `pop ds` / `push bp` / `push es` = 4 bytes, `call get_ip` =
+3 bytes). After `pop bp`, BP holds `O + 7`, so the selfloc displacement
+must be `R - 7`. The old `R - 6` arithmetic was pre-Contract-A and is
+wrong.
 
 The bridge shape requires ES preservation (`push es` after `push bp`,
 `pop es` immediately before `pop bp`). Clobbering BP or ES corrupts
@@ -262,12 +268,12 @@ load error that lists its members.
 | kind ↕▾ | input ↕▾ | logic ↕▾ |
 |---|---|---|
 | −`prefix` | bytes | positional prefix match, unchanged |
-| `suffix` | bytes | positional suffix match, unchanged |
-| `opcode-count` | decoded | mnemonic + optional operand substring; op `eq`/`le`/`ge` |
-| `opcode-absent` | decoded | mnemonic + optional operand substring must not appear |
-| `before` | bytes | unchanged; keeps the absence-inactive quirk |
-| `selfloc` | bytes | marker-derived displacement equals `R - entry` |
-| `budget` | bytes | code length vs ceiling |
+| −`suffix` | bytes | positional suffix match, unchanged |
+| −`opcode-count` | decoded | mnemonic + optional operand substring; op `eq`/`le`/`ge` |
+| −`opcode-absent` | decoded | mnemonic + optional operand substring must not appear |
+| −`before` | bytes | unchanged; keeps the absence-inactive quirk |
+| −`selfloc` | bytes | marker-derived displacement equals `R - entry` |
+| −`budget` | bytes | code length vs ceiling |
 ⚙
 
 No offset reconciliation: mnemonic checkers are counts/absence; byte
@@ -310,16 +316,16 @@ resolve_rules(config, shape, stage, only, skip) -> ordered rule list
 | id ↕▾ | kind ↕▾ | severity ↕▾ |
 |---|---|---|
 | −entry | prefix `0E1F5506` | error |
-| retf-count | opcode-count `retf` == 1 | error |
-| epilogue | suffix `075DCB` | error |
-| no-int21h | opcode-absent `int` + `21` | error |
-| no-iret | opcode-absent `iret` | error |
-| no-speaker | opcode-absent `out` + `61` | error |
-| selfloc | selfloc | error |
-| budget | budget | error |
-| latch-read | before (byte) | warn |
-| nmi-mask | before (byte) | warn |
-| nmi-restore | suffix (byte) | warn |
+| −retf-count | opcode-count `retf` == 1 | error |
+| −epilogue | suffix `075DCB` | error |
+| −no-int21h | opcode-absent `int` + `21` | error |
+| −no-iret | opcode-absent `iret` | error |
+| −no-speaker | opcode-absent `out` + `61` | error |
+| −selfloc | selfloc | error |
+| −budget | budget | error |
+| −latch-read | before (byte) | warn |
+| −nmi-mask | before (byte) | warn |
+| −nmi-restore | suffix (byte) | warn |
 ⚙
 
 Stage presets (explicit full lists, not incremental):
@@ -334,29 +340,31 @@ Stage presets (explicit full lists, not incremental):
 
 #### handler (3-byte entry, no ES)
 
-| id | kind | severity |
+| id ↕▾ | kind ↕▾ | severity ↕▾ |
 |---|---|---|
-| handler-entry | prefix `0E1F55` | error |
-| retf-count | opcode-count `retf` == 1 | error |
-| handler-epilogue | suffix `5D5350CB` | error |
-| no-int21h | opcode-absent | error |
-| no-iret | opcode-absent `iret` | error |
-| no-speaker | opcode-absent | error |
-| selfloc | selfloc | error |
-| budget | budget | error |
+| −handler-entry | prefix `0E1F55` | error |
+| −retf-count | opcode-count `retf` == 1 | error |
+| −handler-epilogue | suffix `5D5350CB` | error |
+| −no-int21h | opcode-absent | error |
+| −no-iret | opcode-absent `iret` | error |
+| −no-speaker | opcode-absent | error |
+| −selfloc | selfloc | error |
+| −budget | budget | error |
+⚙
 
 #### iret (3-byte entry, no ES)
 
-| id | kind | severity |
+| id ↕▾ | kind ↕▾ | severity ↕▾ |
 |---|---|---|
-| iret-entry | prefix `0E1F55` | error |
-| iret-retf-count | opcode-count `retf` == 0 | error |
-| iret-has-iret | opcode-count `iret` == 1 | error |
-| iret-epilogue | suffix `5DCF` | error |
-| no-int21h | opcode-absent | error |
-| no-speaker | opcode-absent | error |
-| selfloc | selfloc | error |
-| budget | budget | error |
+| −iret-entry | prefix `0E1F55` | error |
+| −iret-retf-count | opcode-count `retf` == 0 | error |
+| −iret-has-iret | opcode-count `iret` == 1 | error |
+| −iret-epilogue | suffix `5DCF` | error |
+| −no-int21h | opcode-absent | error |
+| −no-speaker | opcode-absent | error |
+| −selfloc | selfloc | error |
+| −budget | budget | error |
+⚙
 
 The authoritative copy is the v2 `jr_rules.json`; this section is the
 summary. When they disagree, the JSON wins.
@@ -411,15 +419,16 @@ exactly as today.
 
 Stage Gate table:
 
-| Stage | New risk | Lint rules active | Hardware pass condition |
+| Stage ↕▾ | New risk ↕▾ | Lint rules active ↕▾ | Hardware pass condition ↕▾ |
 |---|---|---|---|
-| 0 | None (compile-only) | (none) | N/A |
-| 1 | Bridge stub | entry, retf-count, epilogue, no-int21h, no-iret, no-speaker | Returns RETURNED OK |
-| 2 | Self-location | + selfloc | Writes known byte at O+R |
-| 3 | Result stores | + budget | BASIC reads expected values |
-| 4 | IN from target port | + latch-read | Status changes as documented |
-| 5 | Polling loop | + nmi-mask, nmi-restore | Edges observed on stimulus |
-| 6 | Full capture | stage-5 list (strict not implied) | All contract fields match |
+| −0 | None (compile-only) | (none) | N/A |
+| −1 | Bridge stub | entry, retf-count, epilogue, no-int21h, no-iret, no-speaker | Returns RETURNED OK |
+| −2 | Self-location | + selfloc | Writes known byte at O+R |
+| −3 | Result stores | + budget | BASIC reads expected values |
+| −4 | IN from target port | + latch-read | Status changes as documented |
+| −5 | Polling loop | + nmi-mask, nmi-restore | Edges observed on stimulus |
+| −6 | Full capture | stage-5 list (strict not implied) | All contract fields match |
+⚙
 
 ## 7. CLI selection surface
 
@@ -436,8 +445,9 @@ jr lint FILE.bin   [same selection flags]
 - `--shape` defaults to `bridge`.
 - `--stage` is bridge-only; `--stage` with `handler`/`iret` errors.
 - `--only`/`--skip` take comma-separated rule ids and group names.
-- `--rules` is removed from both subcommands; the old path errors with
-`use --shape handler|iret`.
+- `--rules` is removed from both subcommands. The CLI argparse rejects it
+with rc=2; the engine-level friendly `use --shape handler|iret` message
+is unreachable on the CLI path (MCP only). Recorded as spec drift.
 - Every run prints the active selection:
 `shape=bridge stage=6 rules=entry,retf-count,...` or `SKIPPED: nmi-restore`.
 
@@ -445,7 +455,7 @@ jr lint FILE.bin   [same selection flags]
 
 - `0` success
 - `1` usage error
-- `2` UASM assemble failure
+- `2` UASM assemble failure, or argparse rejection of unknown args
 - `4` lint failure (invariant violated, or warning under `--strict`)
 - `5` build emission/loader failure (`R < code_len`, file I/O)
 - `6` verify/golden byte mismatch
