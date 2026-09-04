@@ -14,14 +14,14 @@ import filecmp
 
 JR_PATH = os.path.join(os.path.dirname(__file__), "jr")
 
-# Contract-A green bridge, R=128. 20 bytes.
+# Contract-A green bridge, R=128. 21 bytes.
 # 0E 1F 55 06  E8 00 00  5D  8D AE 7A 00  E4 A0  B0 80  E6 A0  07 5D CB
 GREEN_BRIDGE = "0E1F5506E800005D8DAE7A00E4A0B080E6A0075DCB"
 
-# Selfloc trap: lea bp,[bp+128] instead of +122.
-SELFLOC_BAD = "0E1F5506E800005D8DAE8000075DCB"
+# Selfloc trap: lea bp,[bp+128] instead of +122. (21 bytes)
+SELFLOC_BAD = "0E1F5506E800005D8DAE8000E4A0B080E6A0075DCB"
 
-# NMI mask (B0 00 E6 A0) present, restore absent.
+# NMI mask (B0 00 E6 A0) present, restore absent. Bridge + selfloc.
 NMI_NO_RESTORE = "0E1F5506E800005D8DAE7A00B000E6A0075DCB"
 
 # Non-NMI routine: bridge entry + selfloc + epilogue only.
@@ -158,13 +158,11 @@ def test_f9_rules_retired(tmpdir):
 def test_f10_only_skip_compose(tmpdir):
     bin_path = os.path.join(tmpdir, "green.bin")
     write_bytes(bin_path, GREEN_BRIDGE)
-    # --only entry runs just the prefix check; green bridge passes.
     rc, stdout, stderr = run_jr(
         ["lint", "green.bin", "--result", "128", "--stage", "6",
          "--only", "entry"], tmpdir)
     assert rc == 0, f"F10 (only) expected rc=0, got {rc}: {stderr}"
     assert "rules=entry" in stdout
-    # --skip entry on a selfloc-bad fixture still fails on selfloc.
     bad_path = os.path.join(tmpdir, "selfloc_bad.bin")
     write_bytes(bad_path, SELFLOC_BAD)
     rc2, _, stderr2 = run_jr(

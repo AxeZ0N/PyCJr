@@ -64,7 +64,7 @@ Build it:
 Output:
 
     shape=bridge stage=6 rules=entry,retf-count,epilogue,no-int21h,no-iret,no-speaker,selfloc,budget,latch-read,nmi-mask,nmi-restore
-    PASS: demo.asm -> demo.bin (26 bytes, R=128) -> demo.bas
+    PASS: demo.asm -> demo.bin (30 bytes, R=128) -> demo.bas
 
 Inspect the emitted BASIC:
 
@@ -76,7 +76,7 @@ Verify a typed listing against the binary:
 
 Output:
 
-    verify: demo.bas matches demo.bin (26 bytes)
+    verify: demo.bas matches demo.bin (30 bytes)
 
 ---
 

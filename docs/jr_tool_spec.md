@@ -13,7 +13,7 @@ wins:
 
 - Section 4, the v2 `jr_rules.json` config
 - Section 5, the loader template
-- Section 8, the fixtures
+- Section 9, the fixtures
 
 ---
 
@@ -259,15 +259,16 @@ load error that lists its members.
 
 ### 4.2 Checker kinds
 
-| kind | input | logic |
+| kind ↕▾ | input ↕▾ | logic ↕▾ |
 |---|---|---|
-| `prefix` | bytes | positional prefix match, unchanged |
+| −`prefix` | bytes | positional prefix match, unchanged |
 | `suffix` | bytes | positional suffix match, unchanged |
 | `opcode-count` | decoded | mnemonic + optional operand substring; op `eq`/`le`/`ge` |
 | `opcode-absent` | decoded | mnemonic + optional operand substring must not appear |
 | `before` | bytes | unchanged; keeps the absence-inactive quirk |
 | `selfloc` | bytes | marker-derived displacement equals `R - entry` |
 | `budget` | bytes | code length vs ceiling |
+⚙
 
 No offset reconciliation: mnemonic checkers are counts/absence; byte
 checkers are positional. Neither needs the other. `8C CB` → `mov bx,cs`
@@ -306,9 +307,9 @@ resolve_rules(config, shape, stage, only, skip) -> ordered rule list
 
 #### bridge (stage 6 = full)
 
-| id | kind | severity |
+| id ↕▾ | kind ↕▾ | severity ↕▾ |
 |---|---|---|
-| entry | prefix `0E1F5506` | error |
+| −entry | prefix `0E1F5506` | error |
 | retf-count | opcode-count `retf` == 1 | error |
 | epilogue | suffix `075DCB` | error |
 | no-int21h | opcode-absent `int` + `21` | error |
@@ -319,6 +320,7 @@ resolve_rules(config, shape, stage, only, skip) -> ordered rule list
 | latch-read | before (byte) | warn |
 | nmi-mask | before (byte) | warn |
 | nmi-restore | suffix (byte) | warn |
+⚙
 
 Stage presets (explicit full lists, not incremental):
 
@@ -332,9 +334,9 @@ Stage presets (explicit full lists, not incremental):
 
 #### handler (3-byte entry, no ES)
 
-| id ↕▾ | kind ↕▾ | severity ↕▾ |
+| id | kind | severity |
 |---|---|---|
-| −handler-entry | prefix `0E1F55` | error |
+| handler-entry | prefix `0E1F55` | error |
 | retf-count | opcode-count `retf` == 1 | error |
 | handler-epilogue | suffix `5D5350CB` | error |
 | no-int21h | opcode-absent | error |
@@ -342,7 +344,6 @@ Stage presets (explicit full lists, not incremental):
 | no-speaker | opcode-absent | error |
 | selfloc | selfloc | error |
 | budget | budget | error |
-⚙
 
 #### iret (3-byte entry, no ES)
 
