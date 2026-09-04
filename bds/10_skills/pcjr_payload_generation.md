@@ -1,4 +1,4 @@
-# PCjr Payload Generation — Session-Close Record Emitter (v2)
+# PCjr Payload Generation — Session-Close Record Emitter (v3)
 
 ## Activation
 
@@ -9,20 +9,33 @@ emitting. Repo wins over this skill on drift.
 
 ## Payload contract
 
-Payload = a zip of exactly these files, emitted through BDS LONG_WORK
-with BDS:create_file per file:
+Payload = a zip emitted through BDS LONG_WORK with BDS:create_file per
+file. Members are two classes: append journals and replacement files.
+The user runs `bin/jr-ingest.sh <payload.zip>`; the script validates
+members, applies them, and commits in one step.
 
-- `COMMIT.txt` — one-line commit message.
+Append journals:
+
+- `COMMIT.txt` — one-line commit message (required).
 - `facts.append.md` — facts to append to `facts.md`.
 - `sessions/<date>_<scope>.md` — the new session handoff file.
 - `docs/test_log.append.md` — ONLY if a hardware run happened.
-- `docs/anchors/<PROG>.BAS` and `docs/anchors/<PROG>.ASM` — only when
-  adding or restoring a ground-truth anchor; `unzip payload.zip` places
-  them at the correct path.
 
-Repo files are never overwritten. Ingest appends facts (dedupe by
-heading), appends session/doc content, one commit. User runs
-`bin/jr-ingest.sh <payload.zip>`.
+Replacement files (full-file, allowlisted — never append):
+
+- `bds/00_system_prompt.md`
+- `bds/10_skills/*.md`
+- `bds/20_persona/*.md`
+- `bds/30_project/*.md`
+- `docs/anchors/<PROG>.{BAS,ASM,bin,data}` — only when adding or
+  restoring a ground-truth anchor.
+
+`bin/` is not ingestible; script edits are manual.
+
+Append journals are never overwritten. Allowlisted replacement files
+are replaced whole. Any zip member outside these classes is a hard
+error and nothing is written. `jr-ingest.sh` owns this enforcement;
+never hand-unzip a payload.
 
 ## facts.append.md rules
 
@@ -74,7 +87,9 @@ heading), appends session/doc content, one commit. User runs
   whether test_log was included. Never re-explain every file.
 - If the payload was already emitted and got lost, re-emit the SAME
   files; do not reformat into prose.
-- Ask before inventing a new file type not in the ingest contract.
+- Never emit a member outside the append/replacement classes above;
+  `jr-ingest.sh` rejects unknown members as a hard error.
+- Ask before adding a new member class to the contract.
 
 ## Memory batch rules (separate from the payload, same close)
 
