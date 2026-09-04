@@ -2061,3 +2061,61 @@ checker kinds; only the two expected Contract-A entry/epilogue
 errors fired, proving the opcode-aware checkers (`int 0x21`,
 `iret`, `out 0x61,al`) produced no false positives on a red
 routine.
+## 2026-09-04 · jr_single_config_consolidation · decision
+
+supersedes: jr_handler_ruleset_added
+supersedes: jr_iret_ruleset_added
+
+The three ruleset files (`jr_rules.json`, `jr_rules_handler.json`,
+`jr_rules_iret.json`) are replaced by one v2 config: `version: 2`, with
+`rules` / `groups` / `shapes`. Stage gating is data (`stage_presets`),
+not per-rule `min_stage`. The two handler/iret files are deleted.
+
+## 2026-09-04 · jr_shape_only_skip_surface · decision
+
+CLI and MCP expose `--shape` (`bridge` default, `handler`, `iret`),
+`--only`, and `--skip`; `--rules` is retired. MCP schema: `shape`
+(string), `only` / `skip` (string arrays). FastMCP derives the schema
+from type annotations, so no separate JSON schema edit is needed.
+
+## 2026-09-04 · jr_strict_decoupled · policy
+
+`strict` is optional, orthogonal, and never implied — not by stage 6,
+not by any shape. Stage-6 + `strict=False` reports warnings and passes
+exactly as before.
+
+## 2026-09-04 · jr_severity_escalation_no_iret_no_speaker · decision
+
+`no-iret` and `no-speaker` move warn → error in all shapes. Correct
+code is unaffected; red code now fails. This is the approved
+A-driven default change.
+
+## 2026-09-04 · contract_a_selfloc_entry_offset · empirical
+
+Contract-A bridge entry is 7 bytes before `get_ip`:
+`push cs` (0E), `pop ds` (1F), `push bp` (55), `push es` (06),
+`call get_ip` (E8 00 00). After `pop bp`, BP = O + 7. The selfloc
+displacement must be `R − 7`. For R = 128, disp = 121 (`79 00`).
+The pre-Contract-A `R − 6` arithmetic is wrong.
+
+## 2026-09-04 · jr_mcp_shape_none_boundary_fix · empirical
+
+The MCP pass-through passed `shape=None` explicitly, defeating
+`jr.py`'s signature default `shape="bridge"`. The engine guard then
+raised `--stage is valid only for shape=bridge` for the None-shape
+case with defaulted stage=6. Fixed at the boundary:
+`shape=shape or "bridge"` at both build and lint call sites. Verified
+pass on a bare lint call after the fix.
+
+## 2026-09-04 · jr_rules_retirement_drift · empirical
+
+Spec §7 says `--rules` errors with `use --shape handler|iret`.
+Measured behavior differs by surface:
+
+- CLI: argparse rejects `--rules` with rc=2
+  (`unrecognized arguments`); the engine-level friendly message is
+  unreachable on the CLI path.
+- MCP: FastMCP silently drops the unknown `rules` key and proceeds as
+  a default bridge lint; it does not reject the call.
+
+Neither surface errors with the spec's wording.
