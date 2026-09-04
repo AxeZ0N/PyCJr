@@ -254,7 +254,9 @@ def jr(
     stage: Optional[int] = None,
     result: Optional[int] = None,
     ceiling: Optional[int] = None,
-    rules: Optional[str] = None,
+    shape: Optional[str] = None,
+    only: Optional[list[str]] = None,
+    skip: Optional[list[str]] = None,
     strict: bool = False,
     uasm: Optional[str] = None,
     keep: bool = False,
@@ -277,7 +279,9 @@ def jr(
                 stage=stage if stage is not None else 6,
                 result=result,
                 ceiling=ceiling if ceiling is not None else 180,
-                rules=rules,
+                shape=shape,
+                only=only,
+                skip=skip,
                 strict=strict,
                 uasm=uasm or "uasm",
             )
@@ -303,7 +307,9 @@ def jr(
                 stage=stage if stage is not None else 6,
                 result=result,
                 ceiling=ceiling if ceiling is not None else 180,
-                rules=rules,
+                shape=shape,
+                only=only,
+                skip=skip,
                 strict=strict,
             )
             return json.dumps(res, indent=2)
